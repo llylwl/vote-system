@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>投票系统控制台 - 实时排行榜与防刷</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%2338bdf8'/%3E%3Cpath d='M7 16l3-4 3 2 4-6' stroke='%230b1220' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+:root{
+  --bg:#0b1220; --panel:#111a2e; --panel2:#0e1626; --line:#1e2a44;
+  --txt:#e2e8f0; --muted:#8ea0c0; --accent:#38bdf8; --green:#34d399; --amber:#fbbf24; --red:#f87171;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:1.5}
+.wrap{max-width:1440px;margin:0 auto;padding:16px}
+/* ===== header ===== */
+header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 18px;background:linear-gradient(135deg,#14203a,#0e1626);border:1px solid var(--line);border-radius:12px;margin-bottom:16px}
+.logo{display:flex;align-items:center;gap:10px}
+.logo .dot{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#38bdf8,#0ea5e9);display:flex;align-items:center;justify-content:center}
+.logo h1{font-size:17px;font-weight:700}
+.logo small{display:block;color:var(--muted);font-size:11px;font-weight:400}
+.status{margin-left:auto;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.status .item{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}
+.led{width:9px;height:9px;border-radius:50%;background:#475569;display:inline-block}
+.led.ok{background:var(--green);box-shadow:0 0 8px rgba(52,211,153,.8)}
+.led.bad{background:var(--red);box-shadow:0 0 8px rgba(248,113,113,.8)}
+.btn{background:#1b2a4a;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;transition:.15s}
+.btn:hover{background:#22365f;border-color:#2f4a80}
+.btn.primary{background:linear-gradient(135deg,#0ea5e9,#38bdf8);border:none;color:#06121f;font-weight:600}
+.btn.primary:hover{filter:brightness(1.1)}
+.btn.danger{background:transparent;color:var(--red);border-color:#4c2a2a}
+.btn.danger:hover{background:#2a1520}
+.btn.sm{padding:4px 10px;font-size:12px}
+/* ===== KPI ===== */
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden}
+.kpi .label{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px}
+.kpi .value{font-size:26px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
+.kpi .sub{color:var(--muted);font-size:11px;margin-top:2px}
+.kpi::after{content:'';position:absolute;right:-24px;top:-24px;width:80px;height:80px;border-radius:50%;background:radial-gradient(circle,rgba(56,189,248,.14),transparent 70%)}
+.kpi.accent .value{color:var(--accent)} .kpi.green .value{color:var(--green)} .kpi.amber .value{color:var(--amber)} .kpi.red .value{color:var(--red)}
+/* ===== grid ===== */
+.grid{display:grid;grid-template-columns:1fr 1.35fr;gap:16px;margin-bottom:16px}
+.grid.two{grid-template-columns:1fr 1fr}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.panel h2{font-size:14px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.panel h2 .bar{width:3px;height:14px;background:var(--accent);border-radius:2px}
+.panel h2 .hint{margin-left:auto;color:var(--muted);font-size:11px;font-weight:400}
+.chart{width:100%;height:300px}
+/* ===== forms ===== */
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.fld{display:flex;flex-direction:column;gap:4px;flex:1;min-width:120px}
+.fld label{font-size:11px;color:var(--muted)}
+input,select,textarea{background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:8px 10px;font-size:13px;outline:none;width:100%}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:52px}
+/* ===== tables ===== */
+table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px}
+th{color:var(--muted);font-weight:500;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid rgba(30,42,68,.6);font-variant-numeric:tabular-nums;word-break:break-all}
+tr:hover td{background:rgba(56,189,248,.04)}
+.tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;background:#1b2a4a;color:var(--accent);border:1px solid #27406e}
+.tag.on{background:rgba(52,211,153,.12);color:var(--green);border-color:#1e5b46}
+.tag.off{background:rgba(248,113,113,.1);color:var(--red);border-color:#5b2a2a}
+.rank-badge{display:inline-flex;width:22px;height:22px;border-radius:6px;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:#1b2a4a}
+.rank-badge.r1{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1a1205}
+.rank-badge.r2{background:linear-gradient(135deg,#cbd5e1,#94a3b8);color:#101827}
+.rank-badge.r3{background:linear-gradient(135deg,#f59e0b,#d97706);color:#1a1205}
+/* ===== toast ===== */
+#toast{position:fixed;top:20px;right:20px;z-index:99;display:flex;flex-direction:column;gap:8px}
+.toast{background:#152238;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:10px 16px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.4);animation:slide .25s ease;max-width:340px}
+.toast.ok{border-left-color:var(--green)} .toast.warn{border-left-color:var(--amber)} .toast.err{border-left-color:var(--red)}
+@keyframes slide{from{transform:translateX(20px);opacity:0}to{transform:none;opacity:1}}
+/* ===== vote result ===== */
+.vote-result{margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);font-size:13px;min-height:40px;display:flex;align-items:center;gap:8px}
+.vote-result.ok{color:var(--green);border-color:#1e5b46}
+.vote-result.err{color:var(--red);border-color:#5b2a2a}
+.scroll{max-height:300px;overflow:auto}
+.switch{position:relative;width:40px;height:22px;background:#1b2a4a;border-radius:20px;cursor:pointer;border:1px solid var(--line);transition:.2s}
+.switch.on{background:var(--accent)}
+.switch::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
+.switch.on::after{left:20px}
+.empty{color:var(--muted);text-align:center;padding:20px 0;font-size:12px}
+@media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.grid,.grid.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- ===== 顶部 ===== -->
+  <header>
+    <div class="logo">
+      <div class="dot"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#06121f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16l3-4 3 2 4-6"/><circle cx="12" cy="12" r="10"/></svg></div>
+      <div><h1>投票系统控制台 <small>Redis Lua 原子投票 · Outbox · RabbitMQ · ZSet 排行榜</small></h1></div>
+    </div>
+    <div class="status">
+      <div class="item"><span class="led" id="ledRedis"></span>Redis</div>
+      <div class="item"><span class="led" id="ledMQ"></span>RabbitMQ</div>
+      <div class="item"><span class="led" id="ledDB"></span>MySQL</div>
+      <div class="item">队列积压 <b id="mqDepth" style="color:var(--txt)">-</b></div>
+      <div class="item">消费者 <b id="mqCons" style="color:var(--txt)">-</b></div>
+      <div class="item" style="gap:8px">自动刷新 <div class="switch on" id="autoSwitch" onclick="toggleAuto()"></div></div>
+      <button class="btn" onclick="refreshAll()">立即刷新</button>
+    </div>
+  </header>
+
+  <!-- ===== KPI ===== -->
+  <div class="kpis">
+    <div class="kpi accent"><div class="label">实时总票数</div><div class="value" id="kTotalVotes">-</div><div class="sub">Redis 实时计数</div></div>
+    <div class="kpi"><div class="label">活动数量</div><div class="value" id="kActivity">-</div><div class="sub">含进行中/未开始/已结束</div></div>
+    <div class="kpi"><div class="label">投票目标</div><div class="value" id="kTarget">-</div><div class="sub">全部活动目标数</div></div>
+    <div class="kpi amber"><div class="label">黑名单</div><div class="value" id="kBlacklist">-</div><div class="sub">USER / IP / DEVICE</div></div>
+    <div class="kpi green"><div class="label">今日入库票数</div><div class="value" id="kTodayDb">-</div><div class="sub">MySQL vote_record</div></div>
+    <div class="kpi red"><div class="label">今日拦截</div><div class="value" id="kBlocked">-</div><div class="sub">重复/黑名单/限流/无效</div></div>
+  </div>
+
+  <!-- ===== 主区 ===== -->
+  <div class="grid">
+    <!-- 左：投票模拟器 -->
+    <div class="panel">
+      <h2><span class="bar"></span>投票模拟器 <span class="hint">POST /api/vote · 限流 IP 20次/秒</span></h2>
+      <div class="row" style="margin-bottom:10px">
+        <div class="fld"><label>活动</label><select id="voteActivity" onchange="onActivityChange()"></select></div>
+        <div class="fld"><label>投票目标</label><select id="voteTarget"></select></div>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <div class="fld"><label>用户 ID</label><input id="voteUserId" type="number" placeholder="如 1001" value="1001"></div>
+        <div class="fld"><label>设备指纹（可选）</label><input id="voteDevice" type="text" placeholder="留空不校验设备"></div>
+      </div>
+      <div class="row">
+        <button class="btn primary" style="flex:1" onclick="doVote()">投 票</button>
+        <button class="btn" onclick="randomVote()">随机模拟 5 票</button>
+      </div>
+      <div class="vote-result" id="voteResult">就绪，选择活动与目标后点击投票。</div>
+    </div>
+
+    <!-- 右：排行榜图表 -->
+    <div class="panel">
+      <h2><span class="bar"></span>实时排行榜 <span class="hint" id="rankTitle">活动 #1 · 每 3 秒刷新</span></h2>
+      <div class="chart" id="rankChart"></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- 左：防刷监控 -->
+    <div class="panel">
+      <h2><span class="bar"></span>防刷拦截监控 <span class="hint">今日累计 · 秒级刷新</span></h2>
+      <div class="chart" id="blockChart" style="height:220px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <div class="kpi" style="padding:10px"><div class="label">活动不可投</div><div class="value" style="font-size:20px" id="sInvalid">0</div></div>
+        <div class="kpi" style="padding:10px"><div class="label">黑名单拦截</div><div class="value" style="font-size:20px" id="sBlacklist">0</div></div>
+        <div class="kpi" style="padding:10px"><div class="label">重复投票拦截</div><div class="value" style="font-size:20px" id="sDuplicate">0</div></div>
+        <div class="kpi" style="padding:10px"><div class="label">限流拦截</div><div class="value" style="font-size:20px" id="sRate">0</div></div>
+      </div>
+    </div>
+
+    <!-- 右：排行榜表格 -->
+    <div class="panel">
+      <h2><span class="bar"></span>完整排名 <span class="hint">当前活动 · ZSet 实时</span></h2>
+      <div class="scroll">
+        <table>
+          <colgroup><col style="width:16%"><col style="width:34%"><col style="width:30%"><col style="width:20%"></colgroup>
+          <thead><tr><th>排名</th><th>目标</th><th>目标 ID</th><th>票数</th></tr></thead>
+          <tbody id="rankTable"><tr><td colspan="4" class="empty">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid two">
+    <!-- 活动管理 -->
+    <div class="panel">
+      <h2><span class="bar"></span>活动管理 <span class="hint">创建 / 预热 / 目标</span></h2>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <div class="fld"><label>活动名称</label><input id="actName" placeholder="如 2026年度最佳开发者评选"></div>
+        <div class="fld"><label>开始时间</label><input id="actStart" type="datetime-local"></div>
+        <div class="fld"><label>结束时间</label><input id="actEnd" type="datetime-local"></div>
+      </div>
+      <div class="fld" style="margin-bottom:10px"><label>活动描述</label><input id="actDesc" placeholder="活动简介"></div>
+      <button class="btn primary" style="width:100%;margin-bottom:12px" onclick="createActivity()">创建活动</button>
+      <div class="row" style="margin-bottom:12px">
+        <div class="fld"><label>为目标添加（当前活动）</label><input id="tgtName" placeholder="目标名称，如 选手F"></div>
+        <div class="fld"><label>目标描述</label><input id="tgtDesc" placeholder="可选"></div>
+        <button class="btn" onclick="addTarget()">添加目标</button>
+      </div>
+      <div class="scroll">
+        <table>
+          <colgroup><col style="width:8%"><col style="width:26%"><col style="width:10%"><col style="width:26%"><col style="width:30%"></colgroup>
+          <thead><tr><th>ID</th><th>名称</th><th>状态</th><th>起止时间</th><th>操作</th></tr></thead>
+          <tbody id="actTable"><tr><td colspan="5" class="empty">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 黑名单管理 -->
+    <div class="panel">
+      <h2><span class="bar"></span>黑名单管理 <span class="hint">Lua 脚本同步校验</span></h2>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <div class="fld" style="flex:0 0 110px"><label>类型</label>
+          <select id="blType"><option value="USER">USER</option><option value="IP">IP</option><option value="DEVICE">DEVICE</option></select>
+        </div>
+        <div class="fld"><label>目标值</label><input id="blValue" placeholder="如 999 / 1.2.3.4"></div>
+        <div class="fld"><label>原因</label><input id="blReason" placeholder="如 刷票"></div>
+        <div class="fld"><label>过期时间（可选）</label><input id="blExpire" type="datetime-local"></div>
+      </div>
+      <button class="btn primary" style="width:100%;margin-bottom:12px" onclick="addBlacklist()">加入黑名单</button>
+      <div class="scroll">
+        <table>
+          <colgroup><col style="width:10%"><col style="width:12%"><col style="width:30%"><col style="width:28%"><col style="width:20%"></colgroup>
+          <thead><tr><th>ID</th><th>类型</th><th>目标值</th><th>原因</th><th>操作</th></tr></thead>
+          <tbody id="blTable"><tr><td colspan="5" class="empty">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ===== 状态 ===== */
+const state = { activities: [], currentActivityId: 1, targets: [], topn: [], dashboard: null, blacklist: [] };
+let autoRefresh = true;
+let rankChart = null, blockChart = null;
+
+/* ===== 工具 ===== */
+async function api(url, options) {
+  const resp = await fetch(url, options);
+  return resp.json();
+}
+function toast(msg, type) {
+  const box = document.getElementById('toast');
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || '');
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ===== 数据加载 ===== */
+async function loadActivities() {
+  const r = await api('/admin/activity/list');
+  if (r.code === 0) {
+    state.activities = r.data || [];
+    const sel = document.getElementById('voteActivity');
+    const prev = sel.value;
+    sel.innerHTML = state.activities.map(a =>
+      `<option value="${a.id}">#${a.id} ${esc(a.activityName)}</option>`).join('');
+    if (state.activities.length === 0) {
+      toast('暂无活动，请先创建', 'warn');
+      return;
+    }
+    if (prev && state.activities.some(a => String(a.id) === prev)) sel.value = prev;
+    else sel.value = state.activities[0].id;
+    if (String(state.currentActivityId) !== sel.value) {
+      state.currentActivityId = Number(sel.value);
+      await loadTargets();
+      await loadTopn();
+    }
+    renderActivityTable();
+  }
+}
+async function loadTargets() {
+  const r = await api('/admin/activity/' + state.currentActivityId + '/targets');
+  if (r.code === 0) {
+    state.targets = r.data || [];
+    const sel = document.getElementById('voteTarget');
+    sel.innerHTML = state.targets.map(t =>
+      `<option value="${t.id}">${esc(t.targetName)}（${t.voteCount} 票）</option>`).join('');
+    if (state.targets.length === 0) sel.innerHTML = '<option value="">暂无目标</option>';
+  }
+}
+async function loadTopn() {
+  const r = await api('/api/activity/' + state.currentActivityId + '/topn?n=10');
+  if (r.code === 0) { state.topn = r.data || []; renderRankChart(); renderRankTable(); }
+}
+async function loadDashboard() {
+  const r = await api('/admin/stats/dashboard');
+  if (r.code === 0) { state.dashboard = r.data; renderDashboard(); }
+}
+async function loadBlacklist() {
+  const r = await api('/admin/blacklist/list');
+  if (r.code === 0) { state.blacklist = r.data || []; renderBlacklistTable(); }
+}
+
+/* ===== 渲染 ===== */
+function renderDashboard() {
+  const d = state.dashboard;
+  if (!d) return;
+  document.getElementById('ledRedis').className = 'led ' + (d.redisConnected ? 'ok' : 'bad');
+  document.getElementById('ledMQ').className = 'led ' + (d.mqConnected ? 'ok' : 'bad');
+  document.getElementById('ledDB').className = 'led ok';
+  document.getElementById('mqDepth').textContent = d.mqQueueDepth < 0 ? '-' : d.mqQueueDepth;
+  document.getElementById('mqCons').textContent = d.mqConsumers;
+  document.getElementById('kTotalVotes').textContent = d.totalVotes;
+  document.getElementById('kActivity').textContent = d.activityCount;
+  document.getElementById('kTarget').textContent = d.targetCount;
+  document.getElementById('kBlacklist').textContent = d.blacklistCount;
+  document.getElementById('kTodayDb').textContent = d.todayVotesDb;
+  const st = d.stats || {};
+  const blocked = (st.invalid||0) + (st.blacklist||0) + (st.duplicate||0) + (st.ratelimit||0);
+  document.getElementById('kBlocked').textContent = blocked;
+  document.getElementById('sInvalid').textContent = st.invalid || 0;
+  document.getElementById('sBlacklist').textContent = st.blacklist || 0;
+  document.getElementById('sDuplicate').textContent = st.duplicate || 0;
+  document.getElementById('sRate').textContent = st.ratelimit || 0;
+  renderBlockChart(st);
+}
+function renderRankChart() {
+  if (!rankChart) rankChart = echarts.init(document.getElementById('rankChart'));
+  const names = [], counts = [], ids = [];
+  state.topn.forEach(t => { names.push('#' + t.targetId); counts.push(t.voteCount); ids.push(t.targetId); });
+  const targetMap = {};
+  state.targets.forEach(t => targetMap[t.id] = t.targetName);
+  rankChart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis', backgroundColor: '#152238', borderColor: '#27406e', textStyle: { color: '#e2e8f0' },
+      formatter: p => { const i = p[0].dataIndex; return (targetMap[ids[i]] || '目标') + ' <b>' + counts[i] + '</b> 票'; } },
+    grid: { left: 44, right: 16, top: 30, bottom: 30 },
+    xAxis: { type: 'category', data: names, axisLine: { lineStyle: { color: '#2a3a5c' } }, axisLabel: { color: '#8ea0c0' } },
+    yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: 'rgba(42,58,92,.4)' } }, axisLabel: { color: '#8ea0c0' } },
+    series: [{
+      type: 'bar', data: counts, barMaxWidth: 42,
+      itemStyle: { borderRadius: [6, 6, 0, 0],
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#38bdf8' }, { offset: 1, color: '#0e3a63' }]) },
+      label: { show: true, position: 'top', color: '#8ea0c0' }
+    }]
+  });
+}
+function renderRankTable() {
+  const tbody = document.getElementById('rankTable');
+  const targetMap = {};
+  state.targets.forEach(t => targetMap[t.id] = t.targetName);
+  if (state.topn.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="empty">暂无投票数据</td></tr>'; return; }
+  tbody.innerHTML = state.topn.map(t => {
+    const cls = t.rank <= 3 ? ' r' + t.rank : '';
+    return `<tr><td><span class="rank-badge${cls}">${t.rank}</span></td><td>${esc(targetMap[t.targetId] || '目标#' + t.targetId)}</td><td>#${t.targetId}</td><td><b>${t.voteCount}</b></td></tr>`;
+  }).join('');
+}
+function renderBlockChart(st) {
+  if (!blockChart) blockChart = echarts.init(document.getElementById('blockChart'));
+  blockChart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis', backgroundColor: '#152238', borderColor: '#27406e', textStyle: { color: '#e2e8f0' } },
+    grid: { left: 64, right: 16, top: 16, bottom: 28 },
+    xAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: 'rgba(42,58,92,.4)' } }, axisLabel: { color: '#8ea0c0' } },
+    yAxis: { type: 'category', inverse: true,
+      data: ['限流', '重复投票', '黑名单', '活动不可投'],
+      axisLine: { lineStyle: { color: '#2a3a5c' } }, axisLabel: { color: '#8ea0c0' } },
+    series: [{
+      type: 'bar', barWidth: 18,
+      data: [
+        { value: st.ratelimit || 0, itemStyle: { color: '#fbbf24' } },
+        { value: st.duplicate || 0, itemStyle: { color: '#f87171' } },
+        { value: st.blacklist || 0, itemStyle: { color: '#f59e0b' } },
+        { value: st.invalid || 0, itemStyle: { color: '#94a3b8' } }
+      ],
+      label: { show: true, position: 'right', color: '#8ea0c0' }
+    }]
+  });
+}
+function renderActivityTable() {
+  const tbody = document.getElementById('actTable');
+  if (state.activities.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无活动</td></tr>'; return; }
+  tbody.innerHTML = state.activities.map(a => {
+    const statusTag = a.status === 1 ? '<span class="tag on">进行中</span>'
+      : a.status === 2 ? '<span class="tag off">已结束</span>' : '<span class="tag">未开始</span>';
+    const active = Number(a.id) === state.currentActivityId;
+    return `<tr>
+      <td>#${a.id}</td>
+      <td>${esc(a.activityName)}</td>
+      <td>${statusTag}</td>
+      <td style="font-size:11px;color:var(--muted)">${String(a.startTime).replace('T',' ').slice(0,16)}<br>~ ${String(a.endTime).replace('T',' ').slice(0,16)}</td>
+      <td>
+        <button class="btn sm ${active ? 'primary' : ''}" onclick="switchActivity(${a.id})">${active ? '当前' : '切换'}</button>
+        <button class="btn sm" onclick="warmupActivity(${a.id})">预热</button>
+      </td></tr>`;
+  }).join('');
+}
+function renderBlacklistTable() {
+  const tbody = document.getElementById('blTable');
+  if (state.blacklist.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无黑名单</td></tr>'; return; }
+  tbody.innerHTML = state.blacklist.map(b => {
+    const color = b.targetType === 'USER' ? 'var(--accent)' : b.targetType === 'IP' ? 'var(--amber)' : 'var(--green)';
+    return `<tr>
+      <td>${b.id}</td>
+      <td><span class="tag" style="color:${color}">${esc(b.targetType)}</span></td>
+      <td>${esc(b.targetValue)}</td>
+      <td style="font-size:12px">${esc(b.reason || '-')}${b.expireTime ? '<br><span style="color:var(--muted)">至 ' + String(b.expireTime).replace('T',' ').slice(0,16) + '</span>' : ''}</td>
+      <td><button class="btn sm danger" onclick="removeBlacklist(${b.id})">删除</button></td></tr>`;
+  }).join('');
+}
+
+/* ===== 操作 ===== */
+function toggleAuto() {
+  autoRefresh = !autoRefresh;
+  document.getElementById('autoSwitch').className = 'switch' + (autoRefresh ? ' on' : '');
+  toast(autoRefresh ? '已开启自动刷新（3秒）' : '已暂停自动刷新');
+}
+async function refreshAll() {
+  await Promise.all([loadDashboard(), loadActivities(), loadBlacklist()]);
+  await loadTargets();
+  await loadTopn();
+}
+async function switchActivity(id) {
+  state.currentActivityId = id;
+  document.getElementById('voteActivity').value = id;
+  document.getElementById('rankTitle').textContent = '活动 #' + id + ' · 每 3 秒刷新';
+  await loadTargets();
+  await loadTopn();
+  renderActivityTable();
+}
+async function onActivityChange() {
+  const id = Number(document.getElementById('voteActivity').value);
+  if (!id) return;
+  await switchActivity(id);
+}
+async function doVote() {
+  const activityId = Number(document.getElementById('voteActivity').value);
+  const targetId = Number(document.getElementById('voteTarget').value);
+  const userId = Number(document.getElementById('voteUserId').value);
+  const deviceFingerprint = document.getElementById('voteDevice').value.trim();
+  if (!activityId || !targetId || !userId) { toast('请选择活动、目标并填写用户 ID', 'warn'); return; }
+  const body = { activityId, targetId, userId };
+  if (deviceFingerprint) body.deviceFingerprint = deviceFingerprint;
+  const box = document.getElementById('voteResult');
+  try {
+    const r = await api('/api/vote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.code === 0) {
+      box.className = 'vote-result ok';
+      box.textContent = '投票成功：用户 ' + userId + ' → 目标 #' + targetId + '（' + new Date().toLocaleTimeString() + '）';
+      toast('投票成功', 'ok');
+      refreshAll();
+    } else {
+      box.className = 'vote-result err';
+      box.textContent = '被拦截（' + r.code + '）：' + r.message;
+      toast('被拦截：' + r.message, 'err');
+      loadDashboard();
+    }
+  } catch (e) {
+    box.className = 'vote-result err';
+    box.textContent = '请求失败：' + e.message;
+  }
+}
+function randomVote() {
+  const base = Math.floor(Math.random() * 9000) + 1000;
+  const tgt = document.getElementById('voteTarget');
+  const targetId = Number(tgt.value);
+  if (!targetId) { toast('请先创建目标', 'warn'); return; }
+  let i = 0;
+  const timer = setInterval(async () => {
+    if (i >= 5) { clearInterval(timer); refreshAll(); return; }
+    const body = { activityId: state.currentActivityId, targetId, userId: base + i };
+    await api('/api/vote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    i++;
+  }, 200);
+}
+async function createActivity() {
+  const name = document.getElementById('actName').value.trim();
+  const start = document.getElementById('actStart').value;
+  const end = document.getElementById('actEnd').value;
+  const desc = document.getElementById('actDesc').value.trim();
+  if (!name || !start || !end) { toast('请填写活动名称与起止时间', 'warn'); return; }
+  const body = { activityName: name, activityDesc: desc, startTime: start + ':00', endTime: end + ':00' };
+  const r = await api('/admin/activity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (r.code === 0) { toast('活动创建成功 #' + r.data, 'ok'); document.getElementById('actName').value = ''; document.getElementById('actDesc').value = ''; await loadActivities(); await switchActivity(r.data); }
+  else toast(r.message, 'err');
+}
+async function addTarget() {
+  const name = document.getElementById('tgtName').value.trim();
+  const desc = document.getElementById('tgtDesc').value.trim();
+  if (!name) { toast('请填写目标名称', 'warn'); return; }
+  const r = await api('/admin/activity/' + state.currentActivityId + '/target',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetName: name, targetDesc: desc }) });
+  if (r.code === 0) { toast('目标已添加', 'ok'); document.getElementById('tgtName').value = ''; document.getElementById('tgtDesc').value = ''; await loadTargets(); await loadTopn(); await warmupActivity(state.currentActivityId, true); }
+  else toast(r.message, 'err');
+}
+async function warmupActivity(id, silent) {
+  const r = await api('/admin/activity/' + id + '/warmup', { method: 'POST' });
+  if (r.code === 0) { toast('活动 #' + id + ' 预热完成', 'ok'); if (!silent) await loadTopn(); }
+  else toast('预热失败：' + r.message, 'err');
+}
+async function addBlacklist() {
+  const type = document.getElementById('blType').value;
+  const value = document.getElementById('blValue').value.trim();
+  const reason = document.getElementById('blReason').value.trim();
+  const expire = document.getElementById('blExpire').value;
+  if (!value) { toast('请填写目标值', 'warn'); return; }
+  const body = { targetType: type, targetValue: value, reason: reason };
+  if (expire) body.expireTime = expire + ':00';
+  const r = await api('/admin/blacklist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (r.code === 0) { toast('已加入黑名单', 'ok'); document.getElementById('blValue').value = ''; document.getElementById('blReason').value = ''; document.getElementById('blExpire').value = ''; await loadBlacklist(); await loadDashboard(); }
+  else toast(r.message, 'err');
+}
+async function removeBlacklist(id) {
+  const r = await api('/admin/blacklist/' + id, { method: 'DELETE' });
+  if (r.code === 0) { toast('已删除黑名单 #' + id, 'ok'); await loadBlacklist(); await loadDashboard(); }
+  else toast(r.message, 'err');
+}
+
+/* ===== 轮询 ===== */
+setInterval(async () => {
+  if (!autoRefresh) return;
+  await loadDashboard();
+  await loadTopn();
+}, 3000);
+setInterval(async () => {
+  if (!autoRefresh) return;
+  await loadActivities();
+  await loadBlacklist();
+}, 10000);
+window.addEventListener('resize', () => { rankChart && rankChart.resize(); blockChart && blockChart.resize(); });
+
+/* ===== 初始化 ===== */
+(async function init() {
+  await loadActivities();
+  await loadTargets();
+  await Promise.all([loadTopn(), loadDashboard(), loadBlacklist()]);
+})();
+</script>
+</body>
+</html>
