@@ -2,6 +2,8 @@ package com.vote.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vote.common.constant.RedisKeys;
+import com.vote.common.exception.BusinessException;
+import com.vote.common.util.DayUtils;
 import com.vote.config.RabbitMQConfig;
 import com.vote.model.dto.VoteOutboxMessage;
 import com.vote.model.dto.VoteRequest;
@@ -50,7 +52,9 @@ public class VoteService {
         long now = System.currentTimeMillis();
 
         String activityKey = RedisKeys.ACTIVITY_INFO + request.getActivityId();
-        String userTodayKey = RedisKeys.USER_TODAY + request.getActivityId() + ":" + request.getUserId();
+        // 每日标记 Key 内含自然日，与数据库唯一索引 DATE(vote_time) 口径一致
+        String userTodayKey = RedisKeys.USER_TODAY + request.getActivityId()
+                + ":" + DayUtils.todayCompact() + ":" + request.getUserId();
         String blacklistUserKey = RedisKeys.BLACKLIST + "USER:" + request.getUserId();
         String blacklistIpKey = RedisKeys.BLACKLIST + "IP:" + userIp;
         String blacklistDeviceKey = (request.getDeviceFingerprint() == null || request.getDeviceFingerprint().isEmpty())
@@ -73,7 +77,9 @@ public class VoteService {
                 messageId,
                 RabbitMQConfig.VOTE_MAIN_QUEUE,
                 payloadJson,
-                "86400"
+                // TTL 到「本地次日 00:00」，而非固定 86400 秒（后者是"距上次投票 24 小时"，
+                // 会让 23:59 投票的用户次日整天被误判为"今日已投"）
+                String.valueOf(DayUtils.secondsUntilNextMidnight())
         );
 
         try {
@@ -87,7 +93,14 @@ public class VoteService {
         }
     }
 
-    /** 构建写入 Outbox 的消息体（内层 payload 为投票明细 JSON） */
+    /**
+     * 构建写入 Outbox 的消息体（内层 payload 为投票明细 JSON）
+     * <p>
+     * 本方法在 Lua 脚本执行<b>之前</b>调用，因此序列化失败时直接抛出是安全的：
+     * 此时尚未计数，客户端会收到错误而不是「成功但没落库」。
+     * 早期实现在失败时返回 {@code "{}"}，该占位串会被 LPUSH 进 Outbox，
+     * 再由 Publisher 解析失败丢弃，形成静默丢票。
+     */
     private String buildPayloadJson(VoteRequest request, String userIp, String messageId) {
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
@@ -112,7 +125,7 @@ public class VoteService {
             return objectMapper.writeValueAsString(message);
         } catch (Exception e) {
             log.error("构建Outbox消息失败", e);
-            return "{}";
+            throw new BusinessException(5000, "投票系统繁忙，请稍后再试");
         }
     }
 }

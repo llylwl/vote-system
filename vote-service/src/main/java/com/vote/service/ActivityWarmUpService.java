@@ -60,4 +60,22 @@ public class ActivityWarmUpService {
         activities.forEach(a -> warmUpActivity(a.getId()));
         log.info("批量预热完成，共 {} 个活动", activities.size());
     }
+
+    /**
+     * 活动 Hash 是否已存在于 Redis
+     * <p>
+     * Hash 是 Lua 脚本判断「活动能否投票」的唯一依据：Hash 缺失时脚本对
+     * <b>所有</b>投票请求都返回 -1（活动未开始或已结束）。
+     * 因此定时任务与启动流程都需要据此判断是否需要补预热。
+     */
+    public boolean isActivityCached(Long activityId) {
+        try {
+            return Boolean.TRUE.equals(
+                    stringRedisTemplate.hasKey(RedisKeys.ACTIVITY_INFO + activityId));
+        } catch (Exception e) {
+            log.warn("检查活动缓存是否存在失败: activityId={}", activityId, e);
+            // 探测失败时保守地认为「已缓存」，避免因 Redis 抖动触发无谓的批量预热
+            return true;
+        }
+    }
 }

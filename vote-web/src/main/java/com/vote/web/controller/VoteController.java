@@ -2,6 +2,8 @@ package com.vote.web.controller;
 
 import com.vote.annotation.RateLimit;
 import com.vote.common.constant.RedisKeys;
+import com.vote.common.exception.BusinessException;
+import com.vote.common.result.ErrorCode;
 import com.vote.common.result.Result;
 import com.vote.model.dto.VoteRequest;
 import com.vote.model.entity.VoteActivity;
@@ -10,9 +12,11 @@ import com.vote.service.VoteService;
 import com.vote.service.VoteStatsService;
 import com.vote.service.cache.ICacheService;
 import com.vote.service.rank.VoteRankService;
+import com.vote.support.ClientIpResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,52 +39,67 @@ public class VoteController {
     private final VoteActivityMapper voteActivityMapper;
     private final ICacheService cacheService;
     private final VoteStatsService voteStatsService;
+    private final ClientIpResolver clientIpResolver;
 
     public VoteController(VoteService voteService,
                           VoteRankService voteRankService,
                           VoteActivityMapper voteActivityMapper,
                           @Qualifier("mutexCacheService") ICacheService cacheService,
-                          VoteStatsService voteStatsService) {
+                          VoteStatsService voteStatsService,
+                          ClientIpResolver clientIpResolver) {
         this.voteService = voteService;
         this.voteRankService = voteRankService;
         this.voteActivityMapper = voteActivityMapper;
         this.cacheService = cacheService;
         this.voteStatsService = voteStatsService;
+        this.clientIpResolver = clientIpResolver;
     }
 
     /**
      * 投票
-     * 限流：默认按客户端 IP，1 秒内最多 20 次
+     * <p>
+     * 限流：按客户端可信 IP，1 秒内最多 20 次。
+     * 参数校验由 {@code @Valid} 完成，失败时抛出的异常由全局处理器统一转换为 HTTP 400。
+     * <p>
+     * Lua 脚本的返回码在此映射为统一错误码，并抛出业务异常 ——
+     * 这样响应会带上真实的 HTTP 状态码（如重复投票返回 409），而不是一律 200。
      */
     @Operation(summary = "投票")
     @PostMapping("/vote")
     @RateLimit(limit = 20, timeWindow = 1000, message = "投票过于频繁，请稍后再试")
-    public Result<Long> vote(@RequestBody VoteRequest request, HttpServletRequest httpRequest) {
-        if (request.getActivityId() == null || request.getTargetId() == null || request.getUserId() == null) {
-            return Result.error(400, "参数不完整：activityId / targetId / userId 必填");
-        }
-        String userIp = getClientIp(httpRequest);
+    public Result<Long> vote(@Valid @RequestBody VoteRequest request, HttpServletRequest httpRequest) {
+        // 使用可信 IP：只有来自可信代理的 X-Forwarded-For 才会被采信。
+        // 该值会作为 IP 黑名单与 IP 限流的依据，若可被伪造则两者都可被绕过。
+        String userIp = clientIpResolver.resolve(httpRequest);
         Long result = voteService.vote(request, userIp);
-        switch (result.intValue()) {
-            case 1:
-                return Result.success(1L);
-            case -1:
+        return switch (result.intValue()) {
+            case 1 -> Result.success(1L);
+            case -1 -> {
                 voteStatsService.incr(VoteStatsService.TYPE_INVALID);
-                return Result.error(4001, "活动未开始或已结束");
-            case -2:
+                throw new BusinessException(ErrorCode.ACTIVITY_NOT_VOTABLE);
+            }
+            case -2 -> {
                 voteStatsService.incr(VoteStatsService.TYPE_BLACKLIST);
-                return Result.error(4002, "您已被限制投票");
-            case -3:
+                throw new BusinessException(ErrorCode.BLACKLISTED);
+            }
+            case -3 -> {
                 voteStatsService.incr(VoteStatsService.TYPE_DUPLICATE);
-                return Result.error(4003, "您今日已投过票");
-            default:
-                return Result.error(5000, "投票系统繁忙，请稍后再试");
-        }
+                throw new BusinessException(ErrorCode.DUPLICATE_VOTE);
+            }
+            default -> throw new BusinessException(ErrorCode.VOTE_SYSTEM_BUSY);
+        };
     }
 
-    /** 查询活动详情（互斥锁缓存防击穿） */
+    /**
+     * 查询活动详情（互斥锁缓存防击穿）
+     * <p>
+     * <b>注意缓存里放的是什么：</b>只放活动的静态元数据。实时票数刻意<b>不</b>进缓存 ——
+     * 早期实现把 Redis 的实时票数一起塞进了 1 小时 TTL 的缓存，而项目里没有任何一处
+     * 调用过缓存失效方法，导致用户在整个活动期间看到的都是「活动开始那一刻的票数」。
+     */
     @Operation(summary = "查询活动详情")
     @GetMapping("/activity/{activityId}")
+    @RateLimit(limit = 60, timeWindow = 1000, message = "请求过于频繁，请稍后再试")
     public Result<Map<String, Object>> getActivity(@PathVariable Long activityId) {
         Map<String, Object> data = cacheService.getWithProtection(RedisKeys.ACTIVITY_DETAIL + activityId, () -> {
             VoteActivity a = voteActivityMapper.selectById(activityId);
@@ -94,18 +113,21 @@ public class VoteController {
             m.put("startTime", String.valueOf(a.getStartTime()));
             m.put("endTime", String.valueOf(a.getEndTime()));
             m.put("status", a.getStatus());
-            m.put("totalVotes", voteRankService.getActivityTotal(activityId));
             return m;
         });
         if (data == null) {
-            return Result.error(404, "活动不存在");
+            // 抛出业务异常，由全局处理器转换为 HTTP 404
+            throw new BusinessException(ErrorCode.NOT_FOUND, "活动不存在: " + activityId);
         }
+        // 实时票数每次单独读取，保证用户看到的是当前值
+        data.put("totalVotes", voteRankService.getActivityTotal(activityId));
         return Result.success(data);
     }
 
     /** TopN 排行榜 */
     @Operation(summary = "TopN 排行榜")
     @GetMapping("/activity/{activityId}/topn")
+    @RateLimit(limit = 60, timeWindow = 1000, message = "请求过于频繁，请稍后再试")
     public Result<List<Map<String, Object>>> getTopN(@PathVariable Long activityId,
                                                      @RequestParam(defaultValue = "10") int n) {
         return Result.success(voteRankService.getTopN(activityId, n));
@@ -114,6 +136,7 @@ public class VoteController {
     /** 指定目标的排名与票数 */
     @Operation(summary = "指定目标排名")
     @GetMapping("/activity/{activityId}/rank/{targetId}")
+    @RateLimit(limit = 60, timeWindow = 1000, message = "请求过于频繁，请稍后再试")
     public Result<Map<String, Object>> getRank(@PathVariable Long activityId,
                                                @PathVariable Long targetId) {
         Map<String, Object> item = new LinkedHashMap<>();
@@ -126,23 +149,11 @@ public class VoteController {
     /** 指定范围排行榜 */
     @Operation(summary = "排行榜（分页）")
     @GetMapping("/activity/{activityId}/ranking")
+    @RateLimit(limit = 30, timeWindow = 1000, message = "请求过于频繁，请稍后再试")
     public Result<List<Map<String, Object>>> getRanking(@PathVariable Long activityId,
                                                         @RequestParam(defaultValue = "0") long start,
                                                         @RequestParam(defaultValue = "49") long end) {
         return Result.success(voteRankService.getActivityRanking(activityId, start, end));
     }
 
-    private String getClientIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("X-Real-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        if (ip != null && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-        return ip;
-    }
 }
