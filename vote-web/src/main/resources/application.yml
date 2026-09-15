@@ -1,47 +1,65 @@
+# ============================================================
+# 公共配置：所有环境共享，不含任何凭据
+#   - 环境相关配置见 application-dev.yml / application-prod.yml
+#   - 凭据一律通过环境变量注入，生产环境不给默认值（缺失即启动失败）
+# ============================================================
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
+  # 优雅停机：收到停止信号后不再接收新请求，等待在途请求处理完毕
+  shutdown: graceful
+  # 不自动信任转发头；客户端 IP 由 ClientIpResolver 按可信代理白名单解析
+  # （无脑信任 X-Forwarded-For 会导致 IP 限流与 IP 黑名单被伪造绕过）
+  forward-headers-strategy: none
 
 spring:
   application:
     name: vote-system
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  # 定时任务线程池：默认单线程会让 Outbox 高频轮询与活动状态任务相互阻塞
+  task:
+    scheduling:
+      pool:
+        size: ${SCHEDULER_POOL_SIZE:4}
+      thread-name-prefix: vote-sched-
+
+  # 数据源仅保留结构配置，连接串与凭据由各环境 profile 提供
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/vote_system?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
-    username: root
-    password: root
     hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      connection-timeout: 3000
+      validation-timeout: 3000
+
+  # 数据库迁移：替代原先的 spring.sql.init（原先每次启动都重跑 DDL/DML）
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # 已有库首次接入 Flyway 时按版本 0 基线化，不重复执行历史脚本
+    baseline-on-migrate: true
+    baseline-version: "0"
+    validate-on-migrate: true
+
   data:
     redis:
-      host: localhost
-      port: 6379
-      password:
-      database: 0
+      timeout: 3000ms
       lettuce:
         pool:
           max-active: 16
           max-idle: 8
           min-idle: 2
+
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: admin
-    password: admin
-    virtual-host: /
+    virtual-host: ${RABBITMQ_VHOST:/}
     publisher-confirm-type: correlated
     publisher-returns: true
-    listener:
-      simple:
-        acknowledge-mode: manual
-        prefetch: 10
-  sql:
-    init:
-      # 首次启动自动建表 + 种子数据（幂等，可重复启动）
-      mode: always
-      schema-locations: classpath:sql/schema.sql
-      data-locations: classpath:sql/data.sql
-      continue-on-error: true
+    # 注意：消费者容器使用 RabbitMQConfig#voteRabbitListenerContainerFactory 的
+    # 自定义配置（prefetch / 并发数 / 手动 ACK）。此处配置 listener.simple 不会生效，
+    # 请勿在此处重复配置，以免造成误解。
 
 springdoc:
   api-docs:
@@ -52,15 +70,43 @@ springdoc:
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
   global-config:
     db-config:
       id-type: auto
-      logic-delete-field: deleted
-      logic-delete-value: 1
-      logic-not-delete-value: 0
+      # 未启用逻辑删除：现有表均无 deleted 列。
+      # 原配置 logic-delete-field: deleted 属于配置漂移，一旦有人给实体加上该字段即报错。
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
 
 logging:
   level:
+    root: info
     com.vote: info
     org.springframework.amqp: warn
+
+# ------------------------------------------------------------
+# 应用自定义配置
+# ------------------------------------------------------------
+app:
+  security:
+    # 可信反向代理地址（IP 或 CIDR），逗号分隔。
+    # 只有来自这些地址的请求，其 X-Forwarded-For 才会被采信。
+    # 例：TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12
+    trusted-proxies: ${TRUSTED_PROXIES:}
+    # 是否信任客户端提交的 X-User-Id 头（仅本地调试用，生产必须为 false）
+    trust-client-user-id: false
+
+  # 票数对账
+  reconcile:
+    # 发现 Redis 与数据库票数不一致时是否自动重建缓存。
+    # 默认关闭：自动重建是以数据库覆盖 Redis，若判断失误会抹掉在途票。
+    # 开启后也只在 Outbox 排空时才会真正执行。
+    auto-repair: ${RECONCILE_AUTO_REPAIR:false}

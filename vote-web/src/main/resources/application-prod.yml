@@ -1,0 +1,48 @@
+# ============================================================
+# 生产环境：所有凭据必须由环境变量注入
+#   - 此处刻意不提供默认值，缺失时应用启动即失败（fail-fast），
+#     避免带着空密码连上生产库或误连到错误的实例
+#   - 必需环境变量清单见 README「部署」章节
+# ============================================================
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      database: ${REDIS_DATABASE:0}
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+
+  flyway:
+    # 生产禁止 flyway clean（会清空整个库）
+    clean-disabled: true
+
+mybatis-plus:
+  configuration:
+    # 生产关闭 SQL 打印，避免同步 IO 成为接口延迟瓶颈与日志泄露
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+management:
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    com.vote: info

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 防刷拦截统计服务
@@ -34,11 +35,23 @@ public class VoteStatsService {
     /** 限流拦截 */
     public static final String TYPE_RATELIMIT = "ratelimit";
 
-    /** 拦截类型 +1 */
+    /** 统计 Key 保留天数 */
+    private static final long STATS_TTL_DAYS = 30L;
+
+    /**
+     * 拦截类型 +1
+     * <p>
+     * 计数 Key 必须带 TTL：原实现用 INCR 却不设过期，每天新增 4 个永不回收的 Key，
+     * 常驻内存单调增长。
+     */
     public void incr(String type) {
         try {
             String key = STATS_PREFIX + type + ":" + LocalDate.now();
-            stringRedisTemplate.opsForValue().increment(key);
+            Long value = stringRedisTemplate.opsForValue().increment(key);
+            // 仅在 Key 首次创建时设置过期时间，后续自增不会重置 TTL
+            if (value != null && value == 1L) {
+                stringRedisTemplate.expire(key, STATS_TTL_DAYS, TimeUnit.DAYS);
+            }
         } catch (Exception e) {
             log.warn("统计计数失败 type={}", type, e);
         }

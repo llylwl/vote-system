@@ -1,4 +1,10 @@
--- 实时投票排行榜与防刷系统 建表脚本（幂等，可重复执行）
+-- ============================================================
+-- V1 初始表结构
+--
+-- 本脚本等价于接入 Flyway 之前的 schema.sql。接入时已有数据库会被
+-- baseline-on-migrate 基线化为版本 0，因此这里保留 IF NOT EXISTS，
+-- 保证在「全新库」与「已有库」两种情况下都能安全通过。
+-- ============================================================
 
 CREATE TABLE IF NOT EXISTS vote_activity (
     id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -35,6 +41,8 @@ CREATE TABLE IF NOT EXISTS vote_record (
     vote_time          DATETIME    NOT NULL COMMENT '投票时间',
     status             TINYINT     DEFAULT 1 COMMENT '状态：1-有效，0-无效/被拦截',
     PRIMARY KEY (id),
+    -- 按「投票时刻的自然日」去重，与业务语义「每天一票」一致。
+    -- 注意：Redis 侧的每日标记也必须按自然日切分，两侧口径不一致会误伤跨天投票。
     UNIQUE KEY uk_activity_user_date (activity_id, user_id, (DATE(vote_time))) COMMENT '联合唯一索引，防止同一天重复投票',
     KEY idx_activity_target (activity_id, target_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '投票记录表';

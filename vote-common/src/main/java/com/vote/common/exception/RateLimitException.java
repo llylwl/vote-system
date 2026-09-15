@@ -1,13 +1,20 @@
 package com.vote.common.exception;
 
+import com.vote.common.result.ErrorCode;
+
 /**
  * 限流异常
+ *
  * @author hzp
  * @since 2026-9-15
  */
 public class RateLimitException extends BusinessException {
 
     public RateLimitException(String message) {
-        super(429, message);
+        super(ErrorCode.RATE_LIMITED, message);
+    }
+
+    public RateLimitException() {
+        super(ErrorCode.RATE_LIMITED);
     }
 }

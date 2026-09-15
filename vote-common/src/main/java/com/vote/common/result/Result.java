@@ -16,8 +16,8 @@ public class Result<T> {
 
     public static <T> Result<T> success(T data) {
         Result<T> r = new Result<>();
-        r.setCode(0);
-        r.setMessage("success");
+        r.setCode(ErrorCode.SUCCESS.getCode());
+        r.setMessage(ErrorCode.SUCCESS.getMessage());
         r.setData(data);
         return r;
     }
@@ -31,5 +31,15 @@ public class Result<T> {
         r.setCode(code);
         r.setMessage(message);
         return r;
+    }
+
+    /** 按统一错误码构造失败响应 */
+    public static <T> Result<T> error(ErrorCode errorCode) {
+        return error(errorCode.getCode(), errorCode.getMessage());
+    }
+
+    /** 按统一错误码构造失败响应，并覆盖提示文案 */
+    public static <T> Result<T> error(ErrorCode errorCode, String message) {
+        return error(errorCode.getCode(), message);
     }
 }

@@ -1,8 +1,14 @@
 package com.vote.web.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.vote.annotation.RateLimit;
 import com.vote.common.constant.RedisKeys;
+import com.vote.common.exception.BusinessException;
+import com.vote.common.result.ErrorCode;
 import com.vote.common.result.Result;
+import com.vote.model.dto.ActivityCreateRequest;
+import com.vote.model.dto.BlacklistCreateRequest;
+import com.vote.model.dto.TargetCreateRequest;
 import com.vote.model.entity.VoteActivity;
 import com.vote.model.entity.VoteBlacklist;
 import com.vote.model.entity.VoteRecord;
@@ -11,12 +17,12 @@ import com.vote.model.mapper.VoteActivityMapper;
 import com.vote.model.mapper.VoteBlacklistMapper;
 import com.vote.model.mapper.VoteRecordMapper;
 import com.vote.model.mapper.VoteTargetMapper;
-import com.vote.service.ActivityWarmUpService;
 import com.vote.service.VoteStatsService;
-import com.vote.service.cache.CacheWarmUpService;
 import com.vote.service.rank.VoteRankService;
+import com.vote.service.reconcile.VoteReconcileService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
@@ -27,7 +33,6 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,8 +53,7 @@ public class AdminController {
     private final VoteTargetMapper voteTargetMapper;
     private final VoteBlacklistMapper voteBlacklistMapper;
     private final VoteRecordMapper voteRecordMapper;
-    private final ActivityWarmUpService activityWarmUpService;
-    private final CacheWarmUpService cacheWarmUpService;
+    private final VoteReconcileService voteReconcileService;
     private final VoteRankService voteRankService;
     private final VoteStatsService voteStatsService;
     private final StringRedisTemplate stringRedisTemplate;
@@ -58,60 +62,126 @@ public class AdminController {
     /** 创建活动 */
     @Operation(summary = "创建活动")
     @PostMapping("/activity")
-    public Result<Long> createActivity(@RequestBody VoteActivity activity) {
-        if (activity.getActivityName() == null || activity.getStartTime() == null || activity.getEndTime() == null) {
-            return Result.error(400, "活动名称 / 开始时间 / 结束时间必填");
+    public Result<Long> createActivity(@Valid @RequestBody ActivityCreateRequest request) {
+        // 字段级校验由 @Valid 完成，跨字段的业务规则在此判断
+        if (!request.getStartTime().isBefore(request.getEndTime())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "开始时间必须早于结束时间");
         }
+
+        VoteActivity activity = new VoteActivity();
+        activity.setActivityName(request.getActivityName());
+        activity.setActivityDesc(request.getActivityDesc());
+        activity.setStartTime(request.getStartTime());
+        activity.setEndTime(request.getEndTime());
         activity.setStatus(0);
         activity.setTotalVotes(0L);
         activity.setRemainVotes(0L);
         voteActivityMapper.insert(activity);
+
+        // 刻意不在此处初始化排行榜 ZSet：
+        // 早期实现的预热逻辑会把所有目标写成 0 票，对进行中的活动等同于清空榜单。
+        // 新活动的缓存由定时任务或 /warmup 接口按需创建。
         return Result.success(activity.getId());
     }
 
     /** 添加投票目标 */
     @Operation(summary = "添加投票目标")
     @PostMapping("/activity/{activityId}/target")
-    public Result<Boolean> addTarget(@PathVariable Long activityId, @RequestBody VoteTarget target) {
+    public Result<Boolean> addTarget(@PathVariable Long activityId,
+                                     @Valid @RequestBody TargetCreateRequest request) {
+        // 校验活动存在：否则会创建出指向不存在活动的孤儿目标，
+        // 其 ID 一旦被客户端提交投票，就会污染排行榜（出现幽灵成员）
+        if (voteActivityMapper.selectById(activityId) == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "活动不存在: " + activityId);
+        }
+        VoteTarget target = new VoteTarget();
         target.setActivityId(activityId);
+        target.setTargetName(request.getTargetName());
+        target.setTargetDesc(request.getTargetDesc());
         voteTargetMapper.insert(target);
         return Result.success(true);
     }
 
-    /** 预热活动（活动信息 + 排行榜 + TopN 缓存） */
-    @Operation(summary = "预热活动")
+    /**
+     * 预热活动缓存（安全，活动进行中也可调用）
+     * <p>
+     * 确保活动 Hash 存在；排行榜缺失时从数据库流水重建，已有数据则原样保留。
+     * <p>
+     * <b>安全说明：</b>早期实现把排行榜一律按「0 票」初始化，对进行中的活动调用一次
+     * 就会把真实票数全部清零，且数据库中没有可恢复的票数字段，只能重放全部流水。
+     *
+     * @return rebuilt=true 表示排行榜此前缺失并已重建；false 表示已有数据、未做改动
+     */
+    @Operation(summary = "预热活动缓存（安全，不覆盖已有票数）")
     @PostMapping("/activity/{activityId}/warmup")
-    public Result<Boolean> warmUp(@PathVariable Long activityId) {
-        activityWarmUpService.warmUpActivity(activityId);
-        // 预热排行榜：以目标列表初始化（0 票）
-        List<VoteTarget> targets = voteTargetMapper.selectList(
-                new LambdaQueryWrapper<VoteTarget>().eq(VoteTarget::getActivityId, activityId));
-        Map<Long, Long> initVotes = new HashMap<>();
-        targets.forEach(t -> initVotes.put(t.getId(), 0L));
-        cacheWarmUpService.warmUpRanking(activityId, initVotes);
-        cacheWarmUpService.warmUpTopNCache(activityId, 10);
-        return Result.success(true);
+    public Result<Map<String, Object>> warmUp(@PathVariable Long activityId) {
+        boolean rebuilt = voteReconcileService.warmUp(activityId);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("activityId", activityId);
+        data.put("rebuilt", rebuilt);
+        data.put("message", rebuilt ? "排行榜缺失，已从数据库流水重建" : "排行榜已存在，未做改动");
+        return Result.success(data);
+    }
+
+    /**
+     * 强制以数据库为准重建缓存（故障恢复用）
+     * <p>
+     * <b>会丢弃尚未落库的在途票</b>，请在 Outbox 排空后使用。
+     */
+    @Operation(summary = "强制重建活动缓存（以数据库为准，会丢弃在途票）")
+    @PostMapping("/activity/{activityId}/rebuild-cache")
+    public Result<Map<String, Object>> rebuildCache(@PathVariable Long activityId) {
+        VoteReconcileService.ReconcileReport report = voteReconcileService.forceRebuild(activityId);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("summary", report.describe());
+        data.put("dbTotal", report.dbTotal());
+        data.put("redisTotal", report.redisTotal());
+        return Result.success(data);
+    }
+
+    /** 票数对账：只读比对数据库与 Redis 的差异，不修改任何数据 */
+    @Operation(summary = "票数对账（只读）")
+    @GetMapping("/activity/{activityId}/reconcile")
+    public Result<Map<String, Object>> reconcile(@PathVariable Long activityId) {
+        VoteReconcileService.ReconcileReport report = voteReconcileService.check(activityId);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("consistent", report.consistent());
+        data.put("summary", report.describe());
+        data.put("dbTotal", report.dbTotal());
+        data.put("redisTotal", report.redisTotal());
+        data.put("dbByTarget", report.dbByTarget());
+        data.put("redisByTarget", report.redisByTarget());
+        return Result.success(data);
     }
 
     /** 添加黑名单（USER / IP / DEVICE），同步写入 Redis */
     @Operation(summary = "添加黑名单")
     @PostMapping("/blacklist")
-    public Result<Boolean> addBlacklist(@RequestBody VoteBlacklist blacklist) {
-        if (blacklist.getTargetType() == null || blacklist.getTargetValue() == null) {
-            return Result.error(400, "targetType / targetValue 必填");
+    public Result<Boolean> addBlacklist(@Valid @RequestBody BlacklistCreateRequest request) {
+        LocalDateTime expireTime = request.getExpireTime();
+        if (expireTime != null && !expireTime.isAfter(LocalDateTime.now())) {
+            // 过期时间已在过去时，原实现会插入数据库但不写 Redis，
+            // 结果黑名单在列表里看得见、实际却不生效，属于静默失效
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "过期时间必须晚于当前时间");
         }
-        blacklist.setTargetType(blacklist.getTargetType().toUpperCase());
+
+        String targetType = request.getTargetType().toUpperCase();
+        VoteBlacklist blacklist = new VoteBlacklist();
+        blacklist.setTargetType(targetType);
+        blacklist.setTargetValue(request.getTargetValue());
+        blacklist.setReason(request.getReason());
+        blacklist.setExpireTime(expireTime);
         voteBlacklistMapper.insert(blacklist);
+
         // 同步写入 Redis，供 Lua 脚本校验
-        String key = RedisKeys.BLACKLIST + blacklist.getTargetType() + ":" + blacklist.getTargetValue();
-        if (blacklist.getExpireTime() != null) {
-            long ttlSeconds = Duration.between(LocalDateTime.now(), blacklist.getExpireTime()).getSeconds();
-            if (ttlSeconds > 0) {
-                stringRedisTemplate.opsForValue().set(key, "1", ttlSeconds, java.util.concurrent.TimeUnit.SECONDS);
-            }
+        String key = RedisKeys.BLACKLIST + targetType + ":" + request.getTargetValue();
+        if (expireTime != null) {
+            long ttlSeconds = Duration.between(LocalDateTime.now(), expireTime).getSeconds();
+            stringRedisTemplate.opsForValue().set(key, "1", ttlSeconds, java.util.concurrent.TimeUnit.SECONDS);
         } else {
             stringRedisTemplate.opsForValue().set(key, "1");
         }
+        log.info("已添加黑名单: type={}, value={}, expireTime={}", targetType, request.getTargetValue(), expireTime);
         return Result.success(true);
     }
 
@@ -173,9 +243,10 @@ public class AdminController {
         return Result.success(result);
     }
 
-    /** 控制台仪表盘统计 */
+    /** 控制台仪表盘统计（聚合多个数据源，限流收紧以防被反复刷新打爆） */
     @Operation(summary = "控制台仪表盘统计")
     @GetMapping("/stats/dashboard")
+    @RateLimit(limit = 10, timeWindow = 1000, message = "刷新过于频繁，请稍后再试")
     public Result<Map<String, Object>> dashboard() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("now", LocalDateTime.now().toString());
