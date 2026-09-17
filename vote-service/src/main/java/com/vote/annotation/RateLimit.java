@@ -6,7 +6,7 @@ import java.lang.annotation.*;
  * 接口限流注解
  * 结合 AOP 切面基于滑动窗口算法实现声明式限流
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

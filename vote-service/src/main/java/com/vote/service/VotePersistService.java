@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit;
  * 而 Redis 侧已经计过票 —— 结果是永久丢票且无人察觉。
  *
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @Service

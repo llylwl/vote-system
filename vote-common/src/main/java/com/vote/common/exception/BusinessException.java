@@ -10,7 +10,7 @@ import lombok.Getter;
  * 保留按 code/message 构造的方式以兼容既有调用。
  *
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Getter
 public class BusinessException extends RuntimeException {

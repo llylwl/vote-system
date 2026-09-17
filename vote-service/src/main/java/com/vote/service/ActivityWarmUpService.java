@@ -18,7 +18,7 @@ import java.util.Map;
  * 活动预热服务
  * 将 MySQL 中的活动数据加载到 Redis，避免高并发下穿透到数据库
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @Service

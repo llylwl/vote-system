@@ -24,7 +24,7 @@ import java.time.LocalDateTime;
  * 本类中的 {@code channel.basicAck} 会因 delivery tag 已被自动确认而报错。
  *
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @Component

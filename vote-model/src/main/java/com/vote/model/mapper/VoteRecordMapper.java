@@ -11,7 +11,7 @@ import java.util.Map;
 
 /**
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Mapper
 public interface VoteRecordMapper extends BaseMapper<VoteRecord> {

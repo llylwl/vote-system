@@ -6,7 +6,7 @@ import lombok.Data;
  * 登录成功响应
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Data
 public class LoginResponse {

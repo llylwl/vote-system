@@ -8,7 +8,7 @@ import lombok.Data;
  * 账号密码登录请求参数
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Data
 public class LoginRequest {

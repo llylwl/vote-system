@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
  * 同时支持微信小程序登录与账号密码登录，未使用的字段为 null。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Data
 @TableName("vote_user")

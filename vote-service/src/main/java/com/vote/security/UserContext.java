@@ -12,7 +12,7 @@ import com.vote.model.entity.User;
  * 会读到上一个用户的数据 —— 这是 ThreadLocal 最典型的串号事故。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 public final class UserContext {
 

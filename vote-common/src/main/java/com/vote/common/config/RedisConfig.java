@@ -16,7 +16,7 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
  * Redis 序列化配置类
  * 统一配置 StringRedisTemplate 和 RedisTemplate 的序列化方式，避免乱码
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Configuration
 public class RedisConfig {

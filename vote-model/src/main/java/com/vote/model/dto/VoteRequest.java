@@ -9,7 +9,7 @@ import lombok.Data;
  * 投票请求参数
  *
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Data
 public class VoteRequest {

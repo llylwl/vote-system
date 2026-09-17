@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
  * 需要立即生效时调用 {@link #invalidate} 主动失效缓存。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Slf4j
 @Service

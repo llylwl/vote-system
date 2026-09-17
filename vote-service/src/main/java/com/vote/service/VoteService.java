@@ -25,7 +25,7 @@ import java.util.UUID;
  * 基于 Redis + Lua 实现原子性「校验 + 投票计数 + 排行榜 + Outbox 写消息」，
  * 将数据库压力降低 90% 以上，从机制上杜绝刷票与掉票
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @Service

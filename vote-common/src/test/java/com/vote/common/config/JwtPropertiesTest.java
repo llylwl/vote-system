@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * 若等到第一次登录调用签名方法时才报错，意味着这个配置错误会被带到线上。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 class JwtPropertiesTest {
 

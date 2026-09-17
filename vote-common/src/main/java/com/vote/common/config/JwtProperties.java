@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
  * 且不能使用开发默认值 —— 密钥一旦泄露，任何人都能伪造任意用户的令牌。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Slf4j
 @Data

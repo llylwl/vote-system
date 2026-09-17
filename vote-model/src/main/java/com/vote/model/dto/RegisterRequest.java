@@ -9,7 +9,7 @@ import lombok.Data;
  * 注册请求参数
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Data
 public class RegisterRequest {

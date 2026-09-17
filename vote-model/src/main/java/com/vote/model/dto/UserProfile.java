@@ -10,7 +10,7 @@ import lombok.Data;
  * 一旦被序列化出去就是密码哈希泄露。所有对外接口一律走本类。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Data
 public class UserProfile {

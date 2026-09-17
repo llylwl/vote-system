@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
  * 监控系统统计到的错误率恒为 0。现在 429/400/404/403 都会如实反映在状态行上。
  *
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @RestControllerAdvice

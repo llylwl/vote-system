@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 /**
  * 投票活动表
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Data
 @TableName("vote_activity")

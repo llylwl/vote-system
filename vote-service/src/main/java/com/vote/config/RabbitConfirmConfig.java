@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
  * RabbitTemplate 确认与退回配置
  * 开启 Publisher Confirm + Return 机制，确保消息可靠到达交换机与队列
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @Configuration

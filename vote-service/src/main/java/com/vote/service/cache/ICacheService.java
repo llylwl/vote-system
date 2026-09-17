@@ -6,7 +6,7 @@ import java.util.function.Supplier;
  * 缓存服务接口
  * 定义通用的缓存操作方法，支持防击穿策略
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 public interface ICacheService {
 

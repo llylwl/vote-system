@@ -11,7 +11,7 @@ import java.io.Serializable;
  * Outbox 发件箱消息实体
  * 用于 Redis 与 RabbitMQ 之间的可靠传递
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Data
 @Builder

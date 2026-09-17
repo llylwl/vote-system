@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
  * 对本项目影响有限：投票链路本身也依赖 Redis，Redis 挂掉时投票本来就不可用。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Slf4j
 @Service

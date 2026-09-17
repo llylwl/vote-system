@@ -32,7 +32,7 @@ import org.springframework.context.annotation.Configuration;
  * 计数随新消息持久化，并在重试队列中延迟后回流，天然带退避。
  *
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Configuration
 public class RabbitMQConfig {

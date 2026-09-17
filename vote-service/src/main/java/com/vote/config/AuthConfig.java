@@ -13,7 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  * 与本项目基于拦截器的认证方式冲突，还要额外写配置去关掉它。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Configuration
 public class AuthConfig {

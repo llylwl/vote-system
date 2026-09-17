@@ -27,7 +27,7 @@ import java.security.NoSuchAlgorithmException;
  * 且 code 只能使用一次、5 分钟过期，由服务端换取才能保证可信。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Slf4j
 @Service

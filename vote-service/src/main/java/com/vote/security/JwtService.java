@@ -26,7 +26,7 @@ import java.util.UUID;
  * 配合 {@link TokenStore} 的 Redis 白名单后，"退出登录"和"强制下线"才能真正生效。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Slf4j
 @Service

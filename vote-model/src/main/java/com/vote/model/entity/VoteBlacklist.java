@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
  * 黑名单表
  * 记录被封禁的用户 / IP / 设备
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Data
 @TableName("vote_blacklist")

@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
  * 对应 {@code app.wechat.*}。AppID 与 AppSecret 走环境变量注入，不写死在代码或配置里。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Data
 @Component

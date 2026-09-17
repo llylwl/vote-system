@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 重点覆盖"令牌必须无法被伪造"这一条底线，以及签发/解析的往返一致性。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 class JwtServiceTest {
 

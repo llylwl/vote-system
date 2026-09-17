@@ -12,7 +12,7 @@ import java.util.List;
  * 基于 Redis ZSet + Lua 的滑动窗口限流器
  * 原子地移除过期数据 + 统计当前窗口请求数 + 添加新请求，避免固定窗口的临界突刺
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Component
 @RequiredArgsConstructor

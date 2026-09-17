@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
  * Redisson 配置类
  * 单机模式，开启 Watchdog（默认 30 秒自动续期），防止锁提前释放
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Configuration
 public class RedissonConfig {

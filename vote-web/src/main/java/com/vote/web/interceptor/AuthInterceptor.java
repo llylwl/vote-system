@@ -34,7 +34,7 @@ import java.lang.annotation.Annotation;
  * {@link UserContext}。这样投票接口可以做到「登录用户用账号身份、未登录用户用设备指纹」。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Slf4j
 @Component

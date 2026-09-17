@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
  * 防刷拦截统计服务
  * 以「天」为粒度在 Redis 中累计各类拦截次数，供控制台可视化展示
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @Service

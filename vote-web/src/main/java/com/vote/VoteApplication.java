@@ -8,7 +8,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 /**
  * 实时投票排行榜与防刷系统启动类
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @SpringBootApplication(scanBasePackages = "com.vote")
 @EnableScheduling

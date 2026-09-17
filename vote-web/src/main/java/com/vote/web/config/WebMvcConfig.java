@@ -10,7 +10,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * MVC 配置
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Configuration
 @RequiredArgsConstructor

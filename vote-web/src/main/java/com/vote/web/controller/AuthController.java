@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 接口层按 IP 限流，账号维度的锁定在 {@link UserService#login} 中实现。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Slf4j
 @Tag(name = "认证接口", description = "注册、登录、登出、当前用户")

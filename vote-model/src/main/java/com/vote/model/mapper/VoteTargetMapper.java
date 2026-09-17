@@ -6,7 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 
 /**
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Mapper
 public interface VoteTargetMapper extends BaseMapper<VoteTarget> {

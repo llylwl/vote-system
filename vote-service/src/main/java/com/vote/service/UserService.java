@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
  * 用户服务：注册、登录、登出与令牌签发
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Slf4j
 @Service

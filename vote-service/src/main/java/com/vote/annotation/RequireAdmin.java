@@ -13,7 +13,7 @@ import java.lang.annotation.Target;
  * 未登录返回 401，已登录但非管理员返回 403。
  *
  * @author hzp
- * @since 2026-9-16
+ * @since 2026-9-17
  */
 @Documented
 @Target({ElementType.METHOD, ElementType.TYPE})

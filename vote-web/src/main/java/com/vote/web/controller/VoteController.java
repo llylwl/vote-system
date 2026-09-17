@@ -30,7 +30,7 @@ import java.util.Map;
 /**
  * 投票核心接口
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @Tag(name = "投票核心接口", description = "投票、查询活动、排行榜")

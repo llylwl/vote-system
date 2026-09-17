@@ -6,7 +6,7 @@ import com.vote.common.result.ErrorCode;
  * 限流异常
  *
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 public class RateLimitException extends BusinessException {
 

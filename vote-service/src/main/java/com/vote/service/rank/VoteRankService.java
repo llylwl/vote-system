@@ -22,7 +22,7 @@ import java.util.Set;
  * 应用侧还会把这个结果物化成 List 导致内存暴涨 —— 一个请求即可打挂整个投票系统。
  *
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @Service

@@ -25,7 +25,7 @@ import java.nio.charset.StandardCharsets;
  * 现在的做法是：<b>重发一条带自增计数的新消息，然后 ACK 原消息</b>。
  *
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @Component

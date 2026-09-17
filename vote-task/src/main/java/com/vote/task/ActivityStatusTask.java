@@ -20,7 +20,7 @@ import java.util.List;
  * 每分钟刷新活动状态（0-未开始 / 1-进行中 / 2-已结束），并确保进行中活动的缓存存在
  *
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @Component

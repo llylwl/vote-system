@@ -17,7 +17,7 @@ import java.util.Map;
  * 投票消息生产者
  * 将投票信息封装为消息并投递到 RabbitMQ（消息持久化，防止 MQ 重启丢失）
  * @author hzp
- * @since 2026-9-15
+ * @since 2026-9-13
  */
 @Slf4j
 @Component
