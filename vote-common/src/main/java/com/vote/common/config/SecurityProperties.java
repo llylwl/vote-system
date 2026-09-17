@@ -37,4 +37,15 @@ public class SecurityProperties {
      * 限流形同虚设。
      */
     private boolean trustClientUserId = false;
+
+    /**
+     * 投票是否必须登录
+     * <p>
+     * {@code true}（生产默认）：未登录返回 401，投票人身份一律来自令牌。
+     * {@code false}（dev 默认）：允许用请求体中的 userId 匿名投票，便于本地压测与调试。
+     * <p>
+     * <b>安全提示：</b>开启匿名投票后，"每天一票"约束的是客户端自称的 userId，
+     * 换个数字就能再投一票。生产环境必须为 true。
+     */
+    private boolean requireLoginToVote = true;
 }

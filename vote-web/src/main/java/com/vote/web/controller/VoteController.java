@@ -1,6 +1,7 @@
 package com.vote.web.controller;
 
 import com.vote.annotation.RateLimit;
+import com.vote.common.config.SecurityProperties;
 import com.vote.common.constant.RedisKeys;
 import com.vote.common.exception.BusinessException;
 import com.vote.common.result.ErrorCode;
@@ -8,6 +9,7 @@ import com.vote.common.result.Result;
 import com.vote.model.dto.VoteRequest;
 import com.vote.model.entity.VoteActivity;
 import com.vote.model.mapper.VoteActivityMapper;
+import com.vote.security.UserContext;
 import com.vote.service.VoteService;
 import com.vote.service.VoteStatsService;
 import com.vote.service.cache.ICacheService;
@@ -17,6 +19,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.*;
 
@@ -29,6 +32,7 @@ import java.util.Map;
  * @author hzp
  * @since 2026-9-15
  */
+@Slf4j
 @Tag(name = "投票核心接口", description = "投票、查询活动、排行榜")
 @RestController
 @RequestMapping("/api")
@@ -40,19 +44,22 @@ public class VoteController {
     private final ICacheService cacheService;
     private final VoteStatsService voteStatsService;
     private final ClientIpResolver clientIpResolver;
+    private final SecurityProperties securityProperties;
 
     public VoteController(VoteService voteService,
                           VoteRankService voteRankService,
                           VoteActivityMapper voteActivityMapper,
                           @Qualifier("mutexCacheService") ICacheService cacheService,
                           VoteStatsService voteStatsService,
-                          ClientIpResolver clientIpResolver) {
+                          ClientIpResolver clientIpResolver,
+                          SecurityProperties securityProperties) {
         this.voteService = voteService;
         this.voteRankService = voteRankService;
         this.voteActivityMapper = voteActivityMapper;
         this.cacheService = cacheService;
         this.voteStatsService = voteStatsService;
         this.clientIpResolver = clientIpResolver;
+        this.securityProperties = securityProperties;
     }
 
     /**
@@ -68,6 +75,9 @@ public class VoteController {
     @PostMapping("/vote")
     @RateLimit(limit = 20, timeWindow = 1000, message = "投票过于频繁，请稍后再试")
     public Result<Long> vote(@Valid @RequestBody VoteRequest request, HttpServletRequest httpRequest) {
+        // 投票人身份以服务端判定为准，覆盖请求体中的值
+        request.setUserId(resolveVoterId(request));
+
         // 使用可信 IP：只有来自可信代理的 X-Forwarded-For 才会被采信。
         // 该值会作为 IP 黑名单与 IP 限流的依据，若可被伪造则两者都可被绕过。
         String userIp = clientIpResolver.resolve(httpRequest);
@@ -88,6 +98,36 @@ public class VoteController {
             }
             default -> throw new BusinessException(ErrorCode.VOTE_SYSTEM_BUSY);
         };
+    }
+
+    /**
+     * 确定投票人身份
+     * <p>
+     * <ul>
+     *   <li><b>已登录</b>：一律使用令牌中的用户 ID，请求体中的 userId 被忽略。
+     *       否则登录用户可以在请求体里填别人的 ID 冒名投票 ——
+     *       "每天一票"、黑名单、投票记录会全部算到别人头上。</li>
+     *   <li><b>未登录</b>：生产环境拒绝（401）；
+     *       开发环境允许使用请求体中的 userId，方便本地调试与压测。</li>
+     * </ul>
+     */
+    private Long resolveVoterId(VoteRequest request) {
+        Long authenticatedUserId = UserContext.currentUserId();
+        if (authenticatedUserId != null) {
+            if (request.getUserId() != null && !authenticatedUserId.equals(request.getUserId())) {
+                log.warn("请求体中的 userId 与登录用户不一致，已按登录用户处理: token={}, body={}",
+                        authenticatedUserId, request.getUserId());
+            }
+            return authenticatedUserId;
+        }
+
+        if (securityProperties.isRequireLoginToVote()) {
+            throw new BusinessException(ErrorCode.TOKEN_INVALID);
+        }
+        if (request.getUserId() == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "userId 必填");
+        }
+        return request.getUserId();
     }
 
     /**

@@ -24,8 +24,13 @@ public class VoteRequest {
     @Positive(message = "targetId 必须为正整数")
     private Long targetId;
 
-    /** 用户ID */
-    @NotNull(message = "userId 必填")
+    /**
+     * 用户ID
+     * <p>
+     * <b>已登录时该字段被服务端忽略</b>，投票人身份一律取自令牌，防止冒名投票。
+     * 仅在允许匿名投票的配置下（{@code app.security.require-login-to-vote=false}，
+     * 开发环境默认）才会被采用，因此这里不做必填校验，由控制器按策略判断。
+     */
     @Positive(message = "userId 必须为正整数")
     private Long userId;
 

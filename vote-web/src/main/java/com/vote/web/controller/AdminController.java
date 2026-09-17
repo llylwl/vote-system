@@ -2,6 +2,7 @@ package com.vote.web.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.vote.annotation.RateLimit;
+import com.vote.annotation.RequireAdmin;
 import com.vote.common.constant.RedisKeys;
 import com.vote.common.exception.BusinessException;
 import com.vote.common.result.ErrorCode;
@@ -39,14 +40,21 @@ import java.util.Map;
 
 /**
  * 管理接口：活动管理、目标管理、预热、黑名单、控制台统计
+ * <p>
+ * <b>类级 {@link RequireAdmin}</b> 对本 Controller 的所有接口生效，
+ * 由 {@code AuthInterceptor} 统一校验：未登录返回 401，非管理员返回 403。
+ * 用类级注解而非逐个方法标注，是为了避免将来新增接口时忘记加权限 ——
+ * 漏加一个写接口（比如删除黑名单）就可能让任何人操作生产数据。
+ *
  * @author hzp
  * @since 2026-9-15
  */
 @Slf4j
-@Tag(name = "管理接口", description = "活动/目标/预热/黑名单/控制台统计")
+@Tag(name = "管理接口", description = "活动/目标/预热/黑名单/控制台统计（需要管理员权限）")
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor
+@RequireAdmin
 public class AdminController {
 
     private final VoteActivityMapper voteActivityMapper;
