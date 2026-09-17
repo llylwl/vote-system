@@ -1,0 +1,53 @@
+# ============================================================
+# 换行符与文件类型规范
+#
+# 为什么需要这个文件：
+#   不做显式声明时，Git 会依据各人机器的 core.autocrlf 设置自行决定，
+#   导致「同一次提交在不同机器上产生的 diff 不同」——
+#   严重时会表现为「我只改了一行，却显示整个文件都被修改」。
+#
+# 这里的策略：
+#   仓库内统一存 LF（跨平台一致）
+#   检出时由 Git 按平台转换
+# ============================================================
+
+# 默认：自动识别文本文件，仓库内统一 LF
+* text=auto
+
+# ---------- 源码与配置：文本，统一 LF ----------
+*.java   text
+*.xml    text
+*.yml    text
+*.yaml   text
+*.properties text
+*.sql    text
+*.md     text
+*.json   text
+*.html   text
+*.css    text
+*.js     text
+*.lua    text
+
+# ---------- Shell 脚本：必须 LF，否则在 Linux 上会报 "bad interpreter" ----------
+*.sh     text eol=lf
+
+# ---------- Windows 脚本：必须 CRLF ----------
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+
+# ---------- 二进制文件：不做任何转换 ----------
+*.jar    binary
+*.class  binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.pdf    binary
+*.zip    binary
+*.tgz    binary
+
+# ---------- 让 GitHub 的语言统计更准确 ----------
+*.md       linguist-documentation
+docs/**    linguist-documentation
+*.sql      linguist-documentation

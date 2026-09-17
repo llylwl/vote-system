@@ -49,7 +49,7 @@ public class VoteController {
     public VoteController(VoteService voteService,
                           VoteRankService voteRankService,
                           VoteActivityMapper voteActivityMapper,
-                          @Qualifier("mutexCacheService") ICacheService cacheService,
+                          @Qualifier("logicalExpCacheService") ICacheService cacheService,
                           VoteStatsService voteStatsService,
                           ClientIpResolver clientIpResolver,
                           SecurityProperties securityProperties) {

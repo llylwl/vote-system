@@ -13,7 +13,7 @@
 
     <groupId>com.vote</groupId>
     <artifactId>vote-system</artifactId>
-    <version>1.0.0</version>
+    <version>3.0.0</version>
     <packaging>pom</packaging>
     <name>vote-system</name>
     <description>实时投票排行榜与防刷系统（Redis Lua 原子投票 + Outbox + RabbitMQ 削峰 + ZSet 排行榜 + 多维度防刷）</description>

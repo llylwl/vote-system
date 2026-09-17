@@ -44,7 +44,7 @@
 mvn clean package -DskipTests
 
 # 2. 启动（默认使用 dev profile，连接本机 MySQL/Redis/RabbitMQ）
-java -jar vote-web/target/vote-web-1.0.0.jar
+java -jar vote-web/target/vote-web-3.0.0.jar
 # 或在 IDEA 中运行 vote-web 模块的 VoteApplication
 
 # 3. 访问
@@ -95,7 +95,7 @@ mysql -uroot -proot vote_system -e "UPDATE vote_user SET role='ADMIN' WHERE user
 切换环境：
 
 ```bash
-java -jar vote-web/target/vote-web-1.0.0.jar --spring.profiles.active=prod
+java -jar vote-web/target/vote-web-3.0.0.jar --spring.profiles.active=prod
 # 或
 export SPRING_PROFILES_ACTIVE=prod
 ```
@@ -107,8 +107,12 @@ export SPRING_PROFILES_ACTIVE=prod
 | `SPRING_PROFILES_ACTIVE` | 激活的环境 | `dev` |
 | `SERVER_PORT` | 服务端口 | `8080` |
 | `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | 数据库连接（**prod 必填**） | — |
+| `DB_POOL_MAX_SIZE` / `DB_POOL_MIN_IDLE` | HikariCP 连接池大小 | `20` / `5` |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Redis 连接（**prod 必填**） | — |
+| `REDIS_DATABASE` | Redis 库索引（用于多项目隔离） | `0` |
 | `RABBITMQ_HOST` / `RABBITMQ_PORT` / `RABBITMQ_USERNAME` / `RABBITMQ_PASSWORD` | MQ 连接（**prod 必填**） | — |
+| `RABBITMQ_VHOST` | RabbitMQ 虚拟主机 | `/` |
+| `SCHEDULER_POOL_SIZE` | 定时任务线程池大小 | `4` |
 | `TRUSTED_PROXIES` | **可信反向代理地址**，逗号分隔，支持 CIDR | 空 |
 | `TRUST_CLIENT_USER_ID` | 是否信任客户端 `X-User-Id`，**生产必须为 false** | `false` |
 | `RECONCILE_AUTO_REPAIR` | 对账发现漂移时是否自动重建缓存 | `false` |
@@ -158,7 +162,7 @@ export TRUSTED_PROXIES="10.0.0.0/8,172.16.0.0/12,192.168.1.100"
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/vote` | 投票（按可信 IP 限流 20 次/秒；生产需登录） |
-| GET | `/api/activity/{id}` | 活动详情（互斥锁防击穿缓存） |
+| GET | `/api/activity/{id}` | 活动详情（逻辑过期防击穿缓存） |
 | GET | `/api/activity/{id}/topn?n=10` | TopN 排行榜 |
 | GET | `/api/activity/{id}/rank/{targetId}` | 指定目标排名 |
 | GET | `/api/activity/{id}/ranking?start=0&end=49` | 排行榜（分页） |
@@ -175,6 +179,9 @@ export TRUSTED_PROXIES="10.0.0.0/8,172.16.0.0/12,192.168.1.100"
 | POST | `/admin/blacklist` | 添加黑名单（USER / IP / DEVICE） |
 | DELETE | `/admin/blacklist/{id}` | 删除黑名单 |
 | GET | `/admin/activity/list` | 活动列表 |
+| GET | `/admin/activity/{id}/targets` | 活动目标列表（含实时票数与排名） |
+| GET | `/admin/activity/{id}/ranking` | 活动完整排行榜（前 100） |
+| GET | `/admin/blacklist/list` | 黑名单列表 |
 | GET | `/admin/stats/dashboard` | 控制台仪表盘统计 |
 
 > 🔒 = 需要登录。请求头 `Authorization: Bearer <token>`。
@@ -260,8 +267,10 @@ done; echo
 4. **实时排行榜**：Redis ZSet 按票数降序，TopN / 排名 / 票数查询毫秒级返回。
 5. **多维度防刷**：用户每日一票（按**自然日**，与数据库唯一索引口径一致）+
    用户/IP/设备黑名单 + 滑动窗口限流 + 落库幂等（Redis 标记 + 数据库唯一索引兜底）。
-6. **缓存防击穿**：互斥锁与逻辑过期两种策略（均使用 Redisson 锁 + 空值占位防穿透）+
-   启动预热 + 活动预热。
+6. **缓存防击穿**：提供互斥锁与逻辑过期两种实现。活动详情属于「可容忍短暂旧值的静态元数据」，
+   采用**逻辑过期**策略（过期后异步重建、当前请求立即返回旧值，牺牲一致性换可用性）；
+   互斥锁实现同样保留，适用于「数据不能脏」的场景。两者均使用 Redisson 锁（看门狗续期）
+   + 空值占位防穿透 + TTL 抖动防雪崩。
 7. **票数对账**：定时比对数据库流水与 Redis 的票数差异并告警；
    提供只读对账与强制重建接口。**数据库是票数的唯一真相，Redis 只是它的缓存。**
 8. **身份与权限**：JWT + Redis 白名单。JWT 负责验签（无状态），
@@ -338,7 +347,7 @@ export WECHAT_APP_SECRET="<小程序 AppSecret>"
 # 生产必须为 false（开启会导致启动失败）
 export WECHAT_MOCK_ENABLED=false
 
-java -jar vote-web/target/vote-web-1.0.0.jar
+java -jar vote-web/target/vote-web-3.0.0.jar
 ```
 
 生产环境自动生效的配置：Flyway `clean` 禁用、Swagger 关闭、

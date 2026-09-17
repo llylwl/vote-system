@@ -6,6 +6,37 @@
 
 ---
 
+## [Unreleased]
+
+### 修复（一致性）
+
+一次针对「文档 / 代码 / 产物三者互相矛盾」的全面审计，共发现并修复 7 处：
+
+- **项目版本号与发布标签对齐**：`pom.xml` 版本从 `1.0.0` 提升到 `3.0.0`，
+  产物 jar 更名为 `vote-web-3.0.0.jar`。此前版本号停留在 `1.0.0`，
+  而 Git 标签已是 `v2.0.0` / `v3.0.0`，两者长期不一致。
+- **活动详情缓存改用逻辑过期策略**：`LogicalExpCacheService` 此前虽已完整实现，
+  却**未被任何地方注入**（死代码），而 README / CHANGELOG 都宣称"两种策略"。
+  现活动详情改用逻辑过期（静态元数据可容忍短暂旧值，牺牲一致性换可用性），
+  互斥锁实现保留供「数据不能脏」的场景使用。
+- **删除死代码** `VoteMessageProducer`（无任何引用）
+
+### 文档
+
+- README 接口表补齐 3 个遗漏的管理端接口：
+  `/admin/activity/{id}/targets`、`/admin/activity/{id}/ranking`、`/admin/blacklist/list`
+- README 环境变量表补齐 5 个变量：
+  `DB_POOL_MAX_SIZE`、`DB_POOL_MIN_IDLE`、`RABBITMQ_VHOST`、`REDIS_DATABASE`、`SCHEDULER_POOL_SIZE`
+- 核心设计第 6 条改写，说明活动详情为何选择逻辑过期而非互斥锁
+
+### 工程
+
+- 新增 `.gitattributes`：显式声明换行符策略（仓库内统一 LF，Shell 脚本强制 LF，
+  Windows 脚本 CRLF，二进制不做转换），消除跨平台 diff 噪音
+- 新增 `LICENSE`（MIT）
+
+---
+
 ## [3.0.0] - 2026-09-17
 
 **主题：用户模块与认证。** 补上此前完全缺失的身份层，使系统具备接入微信小程序的基础。
