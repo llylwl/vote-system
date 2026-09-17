@@ -83,9 +83,56 @@ tr:hover td{background:rgba(56,189,248,.04)}
 .switch.on::after{left:20px}
 .empty{color:var(--muted);text-align:center;padding:20px 0;font-size:12px}
 @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.grid,.grid.two{grid-template-columns:1fr}}
+/* ===== 登录 ===== */
+#loginMask{position:fixed;inset:0;z-index:200;background:rgba(6,12,24,.93);display:flex;align-items:center;justify-content:center}
+#loginMask.hide{display:none}
+.login-box{width:390px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.login-box h2{font-size:18px;margin-bottom:4px}
+.login-box .sub{color:var(--muted);font-size:12px;margin-bottom:18px}
+.login-tabs{display:flex;gap:8px;margin-bottom:16px}
+.login-tabs button{flex:1;background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:7px;cursor:pointer;font-size:13px}
+.login-tabs button.on{background:#1b2a4a;color:var(--txt);border-color:#2f4a80}
+.login-box .fld{margin-bottom:12px}
+.login-err{color:var(--red);font-size:12px;min-height:17px;margin-bottom:8px}
+.user-chip{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+.user-chip b{color:var(--txt)}
+.user-chip .role{background:#1b2a4a;border:1px solid #27406e;border-radius:20px;padding:1px 8px;font-size:10px;color:var(--accent)}
 </style>
 </head>
 <body>
+
+<!-- ===== 登录遮罩 ===== -->
+<div id="loginMask" class="hide">
+  <div class="login-box">
+    <h2>投票系统控制台</h2>
+    <p class="sub">管理接口需要管理员权限，请先登录</p>
+
+    <div class="login-tabs">
+      <button id="tabLogin" class="on" onclick="switchAuthTab('login')">登 录</button>
+      <button id="tabRegister" onclick="switchAuthTab('register')">注 册</button>
+    </div>
+
+    <div class="fld"><label>用户名</label>
+      <input id="loginUser" type="text" placeholder="3~32 位字母/数字/下划线" autocomplete="username"></div>
+    <div class="fld"><label>密码</label>
+      <input id="loginPass" type="password" placeholder="至少 8 位" autocomplete="current-password"
+             onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <div class="fld" id="nicknameFld" style="display:none"><label>昵称（可选）</label>
+      <input id="loginNick" type="text" placeholder="留空则用用户名"></div>
+
+    <div class="login-err" id="loginErr"></div>
+
+    <button class="btn primary" style="width:100%;margin-bottom:10px" id="loginBtn" onclick="doLogin()">登 录</button>
+
+    <div style="color:var(--muted);font-size:11px;border-top:1px solid var(--line);padding-top:12px;line-height:1.7">
+      <b style="color:var(--amber)">首次使用？</b><br>
+      注册普通账号后，需将其角色提升为 <code>ADMIN</code> 才能访问管理接口：<br>
+      <code style="color:var(--accent)">UPDATE vote_user SET role='ADMIN' WHERE username='你的用户名';</code><br>
+      小程序端请调用 <code>/api/auth/wechat-login</code>。
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
   <!-- ===== 顶部 ===== -->
   <header>
@@ -101,6 +148,10 @@ tr:hover td{background:rgba(56,189,248,.04)}
       <div class="item">消费者 <b id="mqCons" style="color:var(--txt)">-</b></div>
       <div class="item" style="gap:8px">自动刷新 <div class="switch on" id="autoSwitch" onclick="toggleAuto()"></div></div>
       <button class="btn" onclick="refreshAll()">立即刷新</button>
+      <div class="user-chip" id="userChip" style="display:none">
+        <b id="chipName">-</b><span class="role" id="chipRole">USER</span>
+        <button class="btn sm" onclick="doLogout()">退出</button>
+      </div>
     </div>
   </header>
 
@@ -219,13 +270,122 @@ tr:hover td{background:rgba(56,189,248,.04)}
 
 <script>
 /* ===== 状态 ===== */
-const state = { activities: [], currentActivityId: 1, targets: [], topn: [], dashboard: null, blacklist: [] };
+const state = { activities: [], currentActivityId: 1, targets: [], topn: [], dashboard: null, blacklist: [], token: '', user: null };
 let autoRefresh = true;
 let rankChart = null, blockChart = null;
 
+/* ===== 认证 ===== */
+const TOKEN_KEY = 'vote_token', USER_KEY = 'vote_user';
+
+function saveAuth(token, user) {
+  state.token = token;
+  state.user = user;
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user || {}));
+  renderUser();
+}
+function clearAuth() {
+  state.token = '';
+  state.user = null;
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  renderUser();
+}
+function renderUser() {
+  const chip = document.getElementById('userChip');
+  if (!state.user) { chip.style.display = 'none'; return; }
+  chip.style.display = 'flex';
+  document.getElementById('chipName').textContent =
+    state.user.nickname || state.user.username || ('#' + state.user.id);
+  document.getElementById('chipRole').textContent = state.user.role || 'USER';
+}
+function showLogin(msg) {
+  document.getElementById('loginMask').classList.remove('hide');
+  document.getElementById('loginErr').textContent = msg || '';
+}
+function hideLogin() {
+  document.getElementById('loginMask').classList.add('hide');
+  document.getElementById('loginErr').textContent = '';
+}
+function switchAuthTab(tab) {
+  const isLogin = (tab === 'login');
+  document.getElementById('tabLogin').classList.toggle('on', isLogin);
+  document.getElementById('tabRegister').classList.toggle('on', !isLogin);
+  document.getElementById('nicknameFld').style.display = isLogin ? 'none' : 'flex';
+  document.getElementById('loginBtn').textContent = isLogin ? '登 录' : '注 册';
+  document.getElementById('loginBtn').onclick = isLogin ? doLogin : doRegister;
+  document.getElementById('loginErr').textContent = '';
+}
+
+/**
+ * 登录 / 注册必须走原生 fetch，不能用 api()。
+ * api() 在收到 401 时会弹出登录框，而此时恰恰就是因为没有令牌才在登录，
+ * 会造成"点登录 → 弹登录框"的循环。
+ */
+async function submitAuth(url, body) {
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json();
+    if (data.code === 0) {
+      saveAuth(data.data.token, data.data.user);
+      hideLogin();
+      toast('欢迎，' + (data.data.user.nickname || data.data.user.username), 'ok');
+      await refreshAll();
+    } else {
+      document.getElementById('loginErr').textContent = data.message || '操作失败';
+    }
+  } catch (e) {
+    document.getElementById('loginErr').textContent = '网络异常：' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function doLogin() {
+  await submitAuth('/api/auth/login', {
+    username: document.getElementById('loginUser').value.trim(),
+    password: document.getElementById('loginPass').value
+  });
+}
+async function doRegister() {
+  await submitAuth('/api/auth/register', {
+    username: document.getElementById('loginUser').value.trim(),
+    password: document.getElementById('loginPass').value,
+    nickname: document.getElementById('loginNick').value.trim()
+  });
+}
+async function doLogout() {
+  try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) { /* 忽略登出失败 */ }
+  clearAuth();
+  showLogin('已退出登录');
+}
+
 /* ===== 工具 ===== */
 async function api(url, options) {
-  const resp = await fetch(url, options);
+  const opts = Object.assign({}, options);
+  opts.headers = Object.assign({}, opts.headers || {});
+  if (state.token) {
+    opts.headers['Authorization'] = 'Bearer ' + state.token;
+  }
+
+  const resp = await fetch(url, opts);
+
+  if (resp.status === 401) {
+    // 令牌失效（过期 / 已在别处登出 / 改密被踢）：清理本地状态并回到登录界面。
+    // 返回统一结构而不是抛异常，调用方原有的 `if (r.code === 0)` 判断
+    // 会自然跳过后续处理，不必给几十处调用点都加 try/catch
+    clearAuth();
+    showLogin('登录已失效，请重新登录');
+    return { code: 401, message: '登录已失效', data: null };
+  }
+  if (resp.status === 403) {
+    return { code: 403, message: '没有权限执行该操作（需要管理员）', data: null };
+  }
   return resp.json();
 }
 function toast(msg, type) {
@@ -502,13 +662,14 @@ async function removeBlacklist(id) {
 }
 
 /* ===== 轮询 ===== */
+/* 未登录时不轮询：否则每个周期都会拿到 401 并反复弹出登录框 */
 setInterval(async () => {
-  if (!autoRefresh) return;
+  if (!autoRefresh || !state.token) return;
   await loadDashboard();
   await loadTopn();
 }, 3000);
 setInterval(async () => {
-  if (!autoRefresh) return;
+  if (!autoRefresh || !state.token) return;
   await loadActivities();
   await loadBlacklist();
 }, 10000);
@@ -516,9 +677,30 @@ window.addEventListener('resize', () => { rankChart && rankChart.resize(); block
 
 /* ===== 初始化 ===== */
 (async function init() {
-  await loadActivities();
-  await loadTargets();
-  await Promise.all([loadTopn(), loadDashboard(), loadBlacklist()]);
+  // 恢复上次登录状态
+  state.token = localStorage.getItem(TOKEN_KEY) || '';
+  const savedUser = localStorage.getItem(USER_KEY);
+  if (savedUser) {
+    try { state.user = JSON.parse(savedUser); } catch (e) { state.user = null; }
+  }
+  renderUser();
+
+  if (!state.token) {
+    showLogin();
+    return;
+  }
+
+  // 本地有令牌不代表服务端仍认它（可能已过期或被登出），先验证一次
+  const me = await api('/api/auth/me');
+  if (me.code !== 0) {
+    // api() 内部已经清理状态并弹出登录框
+    return;
+  }
+  state.user = me.data;
+  localStorage.setItem(USER_KEY, JSON.stringify(me.data));
+  renderUser();
+
+  await refreshAll();
 })();
 </script>
 </body>

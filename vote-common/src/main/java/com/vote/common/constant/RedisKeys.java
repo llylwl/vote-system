@@ -61,6 +61,44 @@ public final class RedisKeys {
     /** 票数对账定时任务的分布式锁：vote:lock:reconcile:task */
     public static final String RECONCILE_TASK_LOCK = "vote:lock:reconcile:task";
 
+    // ------------------------------------------------------------
+    // 认证相关
+    // ------------------------------------------------------------
+
+    /**
+     * 访问令牌白名单：vote:auth:token:{jti} → userId
+     * <p>
+     * JWT 本身是无状态的，签发后无法提前失效。这里在 Redis 中保留一份白名单，
+     * 让「退出登录」「强制下线」「改密码踢人」能够真正生效 ——
+     * 校验时既验签名，也确认该 jti 仍在白名单内。
+     */
+    public static final String AUTH_TOKEN = "vote:auth:token:";
+
+    /**
+     * 用户令牌反向索引：vote:auth:user-tokens:{userId} → Set&lt;jti&gt;
+     * <p>
+     * 用于「退出所有设备」：取出该用户全部 jti 后逐一从白名单移除。
+     * 没有它就只能遍历 keys，在生产环境是不可接受的。
+     */
+    public static final String AUTH_USER_TOKENS = "vote:auth:user-tokens:";
+
+    /**
+     * 登录失败计数：vote:auth:fail:{username} → 次数
+     * <p>
+     * 用于账号级锁定。IP 限流挡不住分布在大量 IP 上的撞库攻击，
+     * 必须再有一层以「账号」为维度的计数。
+     */
+    public static final String AUTH_LOGIN_FAIL = "vote:auth:fail:";
+
+    /**
+     * 用户最新状态缓存：vote:auth:user-state:{userId} → "role|active"
+     * <p>
+     * 令牌里的 role 是签发那一刻的快照。若管理员的角色被降级或账号被封禁，
+     * 旧令牌在有效期内（默认 7 天）仍会带着旧权限通过校验 —— 这是必须堵上的漏洞。
+     * 因此每次校验都读一次这里的「当前状态」，用短 TTL 缓存避免每请求都查库。
+     */
+    public static final String AUTH_USER_STATE = "vote:auth:user-state:";
+
     private RedisKeys() {
     }
 }

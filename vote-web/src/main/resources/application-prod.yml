@@ -46,3 +46,18 @@ management:
 logging:
   level:
     com.vote: info
+
+app:
+  security:
+    # 生产：投票必须登录。开启匿名投票后"每天一票"约束的是客户端自称的 userId，
+    # 换个数字就能再投一票，防刷体系形同虚设
+    require-login-to-vote: true
+
+  jwt:
+    # 无默认值：未注入时启动即失败，避免带着开发密钥或空密钥上线
+    secret: ${JWT_SECRET}
+
+  wechat:
+    # 生产禁止 mock：该模式不校验 code，任何人都能伪造登录（服务启动时会二次校验）
+    mock-enabled: false
+

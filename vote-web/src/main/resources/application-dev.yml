@@ -45,6 +45,19 @@ app:
   security:
     # 本地调试允许用 X-User-Id 模拟登录用户，无需先走登录流程
     trust-client-user-id: true
+    # 本地允许匿名投票，便于直接用 curl / 压测工具打接口，不必先注册登录
+    require-login-to-vote: false
+
+  jwt:
+    # ⚠️ 仅供本地开发的固定密钥，已经随公开仓库发布，任何人都能拿它伪造令牌。
+    #    生产环境必须通过 JWT_SECRET 环境变量注入自己的密钥（application-prod.yml 中无默认值）。
+    secret: "dev-only-insecure-jwt-secret-do-not-use-in-production-32bytes+"
+    expire-seconds: 604800
+
+  wechat:
+    # 未申请小程序 AppID 时开启：openid 由 code 直接推导，不请求微信接口。
+    # 同一个 code 永远映射到同一个 openid，便于反复测试同一个"微信用户"。
+    mock-enabled: true
 
 logging:
   level:

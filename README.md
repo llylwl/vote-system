@@ -3,9 +3,15 @@
 基于 **Spring Boot 3.2 + MyBatis-Plus + Redis 7 + Redisson + RabbitMQ** 的生产级实时投票系统。
 核心链路：**Redis Lua 原子投票 → Outbox 可靠消息 → RabbitMQ 削峰落库 → ZSet 实时排行榜 → 多维度防刷 → 缓存防击穿**。
 
-> **当前版本 v2.0.0** —— 相比 v1 做了一轮针对可靠性的系统性修复。
-> 修了什么、为什么、怎么验证，见 **[docs/V2-RELIABILITY-NOTES.md](docs/V2-RELIABILITY-NOTES.md)**；
-> 版本变更历史见 [CHANGELOG.md](CHANGELOG.md)。
+> **当前版本 v3.0.0** —— 在 v2 的可靠性修复之上，补齐了用户模块与认证体系，具备接入微信小程序的基础。
+>
+> | 版本 | 主题 | 说明文档 |
+> |---|---|---|
+> | v1 | 初始版本 | — |
+> | v2 | 可靠性修复 | [docs/V2-RELIABILITY-NOTES.md](docs/V2-RELIABILITY-NOTES.md) |
+> | **v3** | **用户模块与认证** | **[docs/V3-AUTH-NOTES.md](docs/V3-AUTH-NOTES.md)**（含小程序对接指南） |
+>
+> 完整变更历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 一、技术栈与模块
 
@@ -49,12 +55,32 @@ java -jar vote-web/target/vote-web-1.0.0.jar
 
 **关于首次启动**：
 
-- 表结构由 **Flyway** 自动迁移（`db/migration/V1~V3`），已有数据库会自动基线化，无需手工建表
+- 表结构由 **Flyway** 自动迁移（`db/migration/V1~V4`），已有数据库会自动基线化，无需手工建表
 - 演示数据（活动 1 + 5 个选手）仅在 `dev` profile 下灌入，生产环境不会出现
 - 进行中活动的缓存由**启动预热**自动建立，无需手工调用预热接口
 
-> ⚠️ **v1 → v2 升级注意**：异常现在返回真实的 HTTP 状态码
-> （400/403/404/409/429/500），不再一律返回 200。若客户端依赖"HTTP 恒为 200"，需相应调整。
+**第一次使用控制台**：
+
+`/admin/**` 全部需要 `ADMIN` 角色，先注册账号再提升权限：
+
+```bash
+# 1. 注册
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"Passw0rd!2026","nickname":"管理员"}'
+
+# 2. 提升为管理员（新注册用户默认是 USER）
+mysql -uroot -proot vote_system -e "UPDATE vote_user SET role='ADMIN' WHERE username='admin';"
+
+# 3. 打开控制台并用该账号登录
+#    http://localhost:8080/panel.html
+```
+
+> ⚠️ **升级注意（v2 → v3）**：
+> - **投票默认需要登录**（生产环境 `require-login-to-vote=true`）。dev 环境为 `false`，可继续匿名调试
+> - **`/admin/**` 需要 `ADMIN` 角色**，旧的直接调用方式会返回 401
+> - 新增必填环境变量 `JWT_SECRET`（生产）
+> - 异常返回真实的 HTTP 状态码（400/403/404/409/429/500），不再一律返回 200
 
 ## 四、配置说明
 
@@ -86,6 +112,17 @@ export SPRING_PROFILES_ACTIVE=prod
 | `TRUSTED_PROXIES` | **可信反向代理地址**，逗号分隔，支持 CIDR | 空 |
 | `TRUST_CLIENT_USER_ID` | 是否信任客户端 `X-User-Id`，**生产必须为 false** | `false` |
 | `RECONCILE_AUTO_REPAIR` | 对账发现漂移时是否自动重建缓存 | `false` |
+| `JWT_SECRET` | **JWT 签名密钥（prod 必填）**，至少 32 字节 | — |
+| `JWT_EXPIRE_SECONDS` | 令牌有效期 | `604800`（7 天） |
+| `REQUIRE_LOGIN_TO_VOTE` | 投票是否必须登录 | prod `true` / dev `false` |
+| `WECHAT_APP_ID` / `WECHAT_APP_SECRET` | 微信小程序凭据，不配置则微信登录不可用 | — |
+| `WECHAT_MOCK_ENABLED` | 微信 mock 模式，**生产开启会启动失败** | dev `true` |
+
+生成 JWT 密钥：
+
+```bash
+openssl rand -base64 48
+```
 
 ### ⚠️ 部署在 Nginx / SLB 之后必读
 
@@ -104,13 +141,32 @@ export TRUSTED_PROXIES="10.0.0.0/8,172.16.0.0/12,192.168.1.100"
 
 ## 五、接口一览
 
+### 认证接口（`/api/auth/**`，无需登录，登录类接口有限流）
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/vote` | 投票（按可信 IP 限流 20 次/秒） |
+| POST | `/api/auth/register` | 账号密码注册（限流 5 次/分钟） |
+| POST | `/api/auth/login` | 账号密码登录（限流 10 次/分钟 + 账号级锁定） |
+| POST | `/api/auth/wechat-login` | 微信小程序登录，首次自动注册 |
+| POST | `/api/auth/logout` | 退出当前设备 🔒 |
+| POST | `/api/auth/logout-all` | 退出所有设备 🔒 |
+| GET | `/api/auth/me` | 当前登录用户 🔒 |
+| POST | `/api/auth/change-password` | 修改密码（会踢下所有设备）🔒 |
+
+### 业务接口
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/vote` | 投票（按可信 IP 限流 20 次/秒；生产需登录） |
 | GET | `/api/activity/{id}` | 活动详情（互斥锁防击穿缓存） |
 | GET | `/api/activity/{id}/topn?n=10` | TopN 排行榜 |
 | GET | `/api/activity/{id}/rank/{targetId}` | 指定目标排名 |
 | GET | `/api/activity/{id}/ranking?start=0&end=49` | 排行榜（分页） |
+
+### 管理接口（`/admin/**`，全部需要 `ADMIN` 角色 🔒）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
 | POST | `/admin/activity` | 创建活动 |
 | POST | `/admin/activity/{id}/target` | 添加投票目标 |
 | POST | `/admin/activity/{id}/warmup` | **预热缓存（安全，不覆盖已有票数）** |
@@ -121,6 +177,8 @@ export TRUSTED_PROXIES="10.0.0.0/8,172.16.0.0/12,192.168.1.100"
 | GET | `/admin/activity/list` | 活动列表 |
 | GET | `/admin/stats/dashboard` | 控制台仪表盘统计 |
 
+> 🔒 = 需要登录。请求头 `Authorization: Bearer <token>`。
+
 ### HTTP 状态码
 
 异常会返回真实的 HTTP 状态码：
@@ -128,39 +186,66 @@ export TRUSTED_PROXIES="10.0.0.0/8,172.16.0.0/12,192.168.1.100"
 | 状态码 | 场景 | 业务码 |
 |---|---|---|
 | 400 | 参数校验失败 / 活动未开始或已结束 | 400 / 4001 |
-| 403 | 命中黑名单 | 4002 |
+| 401 | 未登录、令牌无效或已失效 | 4008 / 4005 / 4007 |
+| 403 | 无权限 / 命中黑名单 / 账号被封禁 | 403 / 4002 / 4006 |
 | 404 | 活动或接口不存在 | 404 |
-| 409 | 今日已投过票 | 4003 |
-| 429 | 触发限流（附带 `Retry-After`） | 429 |
+| 409 | 今日已投过票 / 用户名已被占用 | 4003 / 4004 |
+| 429 | 触发限流或账号被锁定（附带 `Retry-After`） | 429 / 4009 |
 | 500 | 系统异常 | 500 / 5000 |
 
 ### 快速验证（Demo 活动 id=1，目标 1~5）
 
 ```bash
-# 投票
-curl -X POST http://localhost:8080/api/vote -H "Content-Type: application/json" \
-  -d '{"activityId":1,"targetId":3,"userId":101}'
+BASE=http://localhost:8080
 
-# 排行榜
-curl "http://localhost:8080/api/activity/1/topn?n=5"
+# 1) 注册并登录，拿到令牌
+curl -X POST $BASE/api/auth/register -H "Content-Type: application/json" \
+  -d '{"username":"tester","password":"Passw0rd!2026"}'
+TOKEN=$(curl -s -X POST $BASE/api/auth/login -H "Content-Type: application/json" \
+  -d '{"username":"tester","password":"Passw0rd!2026"}' \
+  | grep -oE '"token":"[^"]+"' | cut -d'"' -f4)
 
-# 重复投票（应返回 HTTP 409 + code 4003）
-curl -X POST http://localhost:8080/api/vote -H "Content-Type: application/json" \
-  -d '{"activityId":1,"targetId":3,"userId":101}'
-
-# 参数校验（应返回 HTTP 400）
-curl -X POST http://localhost:8080/api/vote -H "Content-Type: application/json" \
+# 2) 投票（登录后无需传 userId，服务端从令牌取）
+curl -X POST $BASE/api/vote -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"activityId":1,"targetId":3}'
 
-# 票数对账
-curl "http://localhost:8080/admin/activity/1/reconcile"
+# 3) 排行榜（无需登录）
+curl "$BASE/api/activity/1/topn?n=5"
 
-# 限流验证：1 秒内并发 30 次（部分应返回 429）
+# 4) 重复投票（应返回 HTTP 409 + code 4003）
+curl -X POST $BASE/api/vote -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"activityId":1,"targetId":3}'
+
+# 5) 用令牌冒充他人：请求体写 userId=9999，实际仍会记到你名下（服务端忽略该字段）
+curl -X POST $BASE/api/vote -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"activityId":1,"targetId":2,"userId":9999}'
+
+# 6) 无令牌访问管理接口（应返回 HTTP 401）
+curl -i $BASE/admin/activity/list
+
+# 7) 票数对账（需要管理员令牌）
+curl "$BASE/admin/activity/1/reconcile" -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+**验证限流**：
+
+```bash
+# 投票接口：1 秒内并发 30 次，部分应返回 429
 for i in $(seq 1 30); do
-  curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8080/api/vote \
-    -H "Content-Type: application/json" \
-    -d "{\"activityId\":1,\"targetId\":1,\"userId\":8$i}" &
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST $BASE/api/vote \
+    -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+    -d '{"activityId":1,"targetId":1}' &
 done; wait
+
+# 登录接口：连续用错误密码尝试 6 次，第 6 次应返回 429（账号已锁定）
+for i in $(seq 1 6); do
+  curl -s -o /dev/null -w "%{http_code} " -X POST $BASE/api/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"username":"tester","password":"WrongPassword"}'
+done; echo
 ```
 
 ## 六、核心设计
@@ -179,6 +264,10 @@ done; wait
    启动预热 + 活动预热。
 7. **票数对账**：定时比对数据库流水与 Redis 的票数差异并告警；
    提供只读对账与强制重建接口。**数据库是票数的唯一真相，Redis 只是它的缓存。**
+8. **身份与权限**：JWT + Redis 白名单。JWT 负责验签（无状态），
+   白名单负责主动失效（登出、踢人）。**角色与封禁状态以数据库为准**（60 秒缓存），
+   而不是信任令牌里的快照 —— 否则降权/封禁后旧令牌在有效期内仍然有效。
+   投票人身份一律由服务端从令牌推导，请求体中的 `userId` 被忽略。
 
 ## 七、实测验收结果（2026-09-16，v2.0.0）
 
@@ -198,6 +287,23 @@ done; wait
 | **预热安全性** | 调用 `/warmup` 前后榜单完全一致（98/36/31/27/25），返回"排行榜已存在，未做改动" |
 | **对账能力** | 人为注入 50 张假票 → 精确报出「目标[10] 数据库=3 Redis=53」；`/rebuild-cache` 后恢复一致 |
 | 404 处理 | HTTP **404**（修复前被兜底处理器转成 500） |
+
+### v3.0.0 认证模块（2026-09-16）
+
+| 验证项 | 结果 |
+|---|---|
+| 单元测试 | **30 个用例全部通过**（新增 `JwtServiceTest` 8 + `JwtPropertiesTest` 5） |
+| Flyway | V4 用户表迁移成功，当前版本 v4 |
+| 注册 | 成功，响应中**不含 `passwordHash`** |
+| 重复注册 / 密码过短 | HTTP **409** `4004` / HTTP **400**（含字段级提示） |
+| 无令牌 / 普通用户 / 伪造令牌 访问 `/admin/**` | **401** / **403** / **401** |
+| **降权后旧令牌** | HTTP **403**（修复前会一直是 200 直到令牌过期） |
+| **封禁后旧令牌** | HTTP **403** `4006 账号已被封禁`（修复前仍可正常使用） |
+| 登出 | 登出后同一令牌访问 `/me` → HTTP **401** |
+| 微信登录（mock） | 首次自动注册，同一 code 再次登录命中同一用户 |
+| **投票身份绑定** | 带令牌且请求体写 `userId=9999` → 实际落库 `user_id=1`，`user_id=9999` 记录数 **0** |
+| 账号锁定 | 第 1~5 次 `4005`，第 6 次 `4009`（HTTP 429）；锁定期间正确密码同样被拒 |
+| 控制台面板 | `/panel.html` 正常加载，含登录遮罩与用户信息栏 |
 
 ## 八、部署
 
@@ -222,16 +328,44 @@ export RABBITMQ_PASSWORD="<MQ密码>"
 # 部署在反向代理之后时必须配置
 export TRUSTED_PROXIES="10.0.0.0/8"
 
+# ---- 认证（v3 新增，必填）----
+# 至少 32 字节，用 `openssl rand -base64 48` 生成，绝不要复用开发密钥
+export JWT_SECRET="<你的随机密钥>"
+
+# ---- 微信小程序（可选，不配则微信登录不可用）----
+export WECHAT_APP_ID="wx1234567890abcdef"
+export WECHAT_APP_SECRET="<小程序 AppSecret>"
+# 生产必须为 false（开启会导致启动失败）
+export WECHAT_MOCK_ENABLED=false
+
 java -jar vote-web/target/vote-web-1.0.0.jar
 ```
 
 生产环境自动生效的配置：Flyway `clean` 禁用、Swagger 关闭、
-SQL 日志关闭、健康检查详情隐藏、优雅停机。
+SQL 日志关闭、健康检查详情隐藏、优雅停机、
+投票必须登录、微信 mock 强制关闭。
+
+**部署后第一件事**：创建管理员账号
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"<强密码>"}'
+
+mysql -h<db-host> -u<user> -p <库名> \
+  -e "UPDATE vote_user SET role='ADMIN' WHERE username='admin';"
+```
 
 ## 九、后续规划
 
-- **v3（规划中）**：用户模块（注册 / 登录 / 微信小程序 `code2session`）、
-  JWT + Redis 白名单认证、`/admin/**` 鉴权与角色控制、控制台登录入口
+v3 已完成用户模块、微信登录、JWT 认证与控制台登录入口。
+接入小程序的具体步骤见 **[docs/V3-AUTH-NOTES.md](docs/V3-AUTH-NOTES.md) 第四节**（含前端代码示例）。
+
+后续可做：
+
+- 刷新令牌（refresh token），避免 7 天令牌过期后强制重新登录
+- 管理员对用户的管理界面（封禁 / 解封 / 改角色）
+- 手机号验证码登录
 - CI/CD、Dockerfile 与 docker-compose、Prometheus 指标
 
 ## 十、已知限制

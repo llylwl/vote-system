@@ -103,6 +103,24 @@ app:
     trusted-proxies: ${TRUSTED_PROXIES:}
     # 是否信任客户端提交的 X-User-Id 头（仅本地调试用，生产必须为 false）
     trust-client-user-id: false
+    # 投票是否必须登录。生产为 true；dev 覆盖为 false 以便本地调试与压测
+    require-login-to-vote: ${REQUIRE_LOGIN_TO_VOTE:true}
+
+  # JWT 配置：密钥务必通过环境变量注入，不要写进配置文件
+  jwt:
+    # 至少 32 字节（HS256 要求 256 位），可用 `openssl rand -base64 48` 生成
+    secret: ${JWT_SECRET:}
+    # 令牌有效期（秒），默认 7 天
+    expire-seconds: ${JWT_EXPIRE_SECONDS:604800}
+    issuer: vote-system
+
+  # 微信小程序配置
+  wechat:
+    app-id: ${WECHAT_APP_ID:}
+    app-secret: ${WECHAT_APP_SECRET:}
+    # mock 模式：未申请到 AppID 时用于本地开发，openid 由 code 直接推导。
+    # 生产环境开启会直接导致启动失败
+    mock-enabled: ${WECHAT_MOCK_ENABLED:false}
 
   # 票数对账
   reconcile:
