@@ -333,7 +333,7 @@ export TRUSTED_PROXIES="10.0.0.0/8"
 export JWT_SECRET="<你的随机密钥>"
 
 # ---- 微信小程序（可选，不配则微信登录不可用）----
-export WECHAT_APP_ID="wx1234567890abcdef"
+export WECHAT_APP_ID="<你的小程序AppID>"
 export WECHAT_APP_SECRET="<小程序 AppSecret>"
 # 生产必须为 false（开启会导致启动失败）
 export WECHAT_MOCK_ENABLED=false

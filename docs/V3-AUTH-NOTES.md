@@ -147,7 +147,7 @@ app:
 3. 设置环境变量：
 
 ```bash
-export WECHAT_APP_ID=wx1234567890abcdef
+export WECHAT_APP_ID="<你的小程序AppID>"
 export WECHAT_APP_SECRET=your_app_secret
 export WECHAT_MOCK_ENABLED=false
 ```
